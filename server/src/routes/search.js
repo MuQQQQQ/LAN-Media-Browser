@@ -1,6 +1,8 @@
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
-import { db } from '../db.js';
+import { config } from '../config.js';
+import { db, deleteFileRecord } from '../db.js';
 import { getMediaType } from '../mediaTypes.js';
 
 export const searchRouter = express.Router();
@@ -68,12 +70,20 @@ searchRouter.get('/', (req, res, next) => {
 
         const total = db.prepare(countSql).get(...params).total;
         const rows = db.prepare(sql).all(...params, pageSize, offset);
-        const files = rows.map((file) => ({
-            id: file.id,
-            path: file.path,
-            name: path.posix.basename(file.path),
-            type: getMediaType(path.posix.extname(file.path)) || 'file'
-        }));
+        const files = [];
+        for (const file of rows) {
+            const absolutePath = path.resolve(config.baseFolder, file.path);
+            if (!fs.existsSync(absolutePath)) {
+                deleteFileRecord(file.path);
+                continue;
+            }
+            files.push({
+                id: file.id,
+                path: file.path,
+                name: path.posix.basename(file.path),
+                type: getMediaType(path.posix.extname(file.path)) || 'file'
+            });
+        }
         res.json({ page, pageSize, total, files, filters: { name, tagMode, tags: tagIds } });
     } catch (error) {
         next(error);

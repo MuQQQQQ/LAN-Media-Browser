@@ -10,10 +10,13 @@ A Windows/PowerShell-friendly LAN web app for browsing local image/video folders
 - Physical folder navigation with breadcrumbs
 - Folder/file pagination via `page` and `pageSize`
 - Lazy image loading
+- Lazy image/video thumbnail generation with local cache under `server/thumbnails`
 - HTML5 video player with HTTP range request streaming
+- Fullscreen file viewer with previous/next navigation, keyboard arrows, ESC close, metadata, and in-viewer tagging
 - File-only tagging with 2-level tags: category + sub-tag
 - Multi-file selection with checkboxes and mobile long-press
 - Search endpoint: `GET /api/search?tags=1,2&tagMode=and&name=dress&page=1&pageSize=50`
+- Search opens in an independent `/search` browser tab. The name filter is disabled until explicitly enabled.
 - Secure base-folder restriction to prevent traversal outside configured media root
 
 ## Project Structure
@@ -92,6 +95,7 @@ HOST=0.0.0.0
 BASE_FOLDER=D:\Media
 DATABASE_PATH=./data/media.db
 CLIENT_DIST=../client/dist
+THUMBNAILS_ROOT=./thumbnails
 ```
 
 `BASE_FOLDER` is the only filesystem root the app can access. All file/media APIs resolve paths under this folder and block escape attempts.
@@ -155,6 +159,15 @@ GET /media?path=relative/file.mp4
 ```
 
 Supports `Range: bytes=start-end` for video seeking/mobile playback.
+
+### Thumbnails
+
+```http
+GET /api/thumbnail/image?path=relative/file.jpg
+GET /api/thumbnail/video?path=relative/file.mp4
+```
+
+Image thumbnails are generated with `sharp`. Video thumbnails are generated with `ffmpeg` through `fluent-ffmpeg`, cached by hashed relative path, and limited to 3 concurrent jobs. Install ffmpeg and ensure `ffmpeg.exe` is on PATH for video thumbnails.
 
 ### Tags
 

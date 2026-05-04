@@ -1,2 +1,5 @@
 node_modules
 *data*
+server/thumbnails
+server/package-lock.json
+client/package-lock.json

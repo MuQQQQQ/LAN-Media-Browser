@@ -1,4 +1,5 @@
 export const mediaUrl = (path) => `/media?path=${encodeURIComponent(path)}`;
+export const thumbnailUrl = (file) => `/api/thumbnail/${file.type}?path=${encodeURIComponent(file.path)}`;
 
 async function request(path, options) {
     const response = await fetch(path, {
@@ -14,8 +15,11 @@ async function request(path, options) {
 
 export const api = {
     browse: ({ path = '', page = 1, pageSize = 50 }) => request(`/api/browse?path=${encodeURIComponent(path)}&page=${page}&pageSize=${pageSize}`),
-    tags: () => request('/api/tags'),
+    tags: (sort = 'alphabetical') => request(`/api/tags?sort=${encodeURIComponent(sort)}`),
     createTag: (payload) => request('/api/tags', { method: 'POST', body: JSON.stringify(payload) }),
+    updateTag: (id, payload) => request(`/api/tags/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    deleteTag: (id) => request(`/api/tags/${id}`, { method: 'DELETE' }),
+    removeFile: (path) => request(`/api/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
     fileTags: (path) => request(`/api/tags/file?path=${encodeURIComponent(path)}`),
     assignTags: (payload) => request('/api/tags/assign', { method: 'POST', body: JSON.stringify(payload) }),
     removeTags: (payload) => request('/api/tags/remove', { method: 'POST', body: JSON.stringify(payload) }),

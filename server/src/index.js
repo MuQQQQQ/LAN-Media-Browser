@@ -8,6 +8,8 @@ import { browseRouter } from './routes/browse.js';
 import { mediaRouter } from './routes/media.js';
 import { tagsRouter } from './routes/tags.js';
 import { searchRouter } from './routes/search.js';
+import { thumbnailRouter } from './routes/thumbnail.js';
+import { filesRouter } from './routes/files.js';
 
 const app = express();
 app.use(cors());
@@ -17,6 +19,8 @@ app.get('/api/health', (req, res) => res.json({ ok: true, baseFolder: config.bas
 app.use('/api/browse', browseRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/search', searchRouter);
+app.use('/api/thumbnail', thumbnailRouter);
+app.use('/api/files', filesRouter);
 app.use('/media', mediaRouter);
 
 if (fs.existsSync(config.clientDist)) {

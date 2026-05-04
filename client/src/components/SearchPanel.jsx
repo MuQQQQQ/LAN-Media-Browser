@@ -8,7 +8,8 @@ export default function SearchPanel({ tagsTree, filters, setFilters, onSearch, o
     return (
         <section className="panel search-panel">
             <h2>Search files</h2>
-            <input placeholder="Name contains…" value={filters.name} onChange={(e) => setFilters((f) => ({ ...f, name: e.target.value }))} />
+            <label className="inline-check"><input type="checkbox" checked={filters.nameEnabled} onChange={(e) => setFilters((f) => ({ ...f, nameEnabled: e.target.checked, name: e.target.checked ? f.name : '' }))} /> Enable name filter</label>
+            {filters.nameEnabled && <input placeholder="Name contains…" value={filters.name} onChange={(e) => setFilters((f) => ({ ...f, name: e.target.value }))} />}
             <div className="mode-toggle">
                 <label><input type="radio" checked={filters.tagMode === 'and'} onChange={() => setFilters((f) => ({ ...f, tagMode: 'and' }))} /> AND</label>
                 <label><input type="radio" checked={filters.tagMode === 'or'} onChange={() => setFilters((f) => ({ ...f, tagMode: 'or' }))} /> OR</label>

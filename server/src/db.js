@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     parent_id INTEGER NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at TEXT NULL,
     FOREIGN KEY(parent_id) REFERENCES tags(id) ON DELETE CASCADE,
     UNIQUE(name, parent_id)
 );
@@ -36,6 +38,13 @@ CREATE INDEX IF NOT EXISTS idx_file_tags_file_id ON file_tags(file_id);
 CREATE INDEX IF NOT EXISTS idx_file_tags_tag_id ON file_tags(tag_id);
 `);
 
+for (const statement of [
+    "ALTER TABLE tags ADD COLUMN created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
+    "ALTER TABLE tags ADD COLUMN last_used_at TEXT NULL"
+]) {
+    try { db.exec(statement); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+}
+
 const insertFile = db.prepare('INSERT OR IGNORE INTO files(path) VALUES (?)');
 const getFile = db.prepare('SELECT id, path FROM files WHERE path = ?');
 
@@ -44,8 +53,21 @@ export function ensureFile(relativePath) {
     return getFile.get(relativePath);
 }
 
-export function getTagsTree() {
-    const rows = db.prepare('SELECT id, name, parent_id AS parentId FROM tags ORDER BY parent_id IS NOT NULL, name COLLATE NOCASE').all();
+export function deleteFileRecord(relativePath) {
+    const file = getFile.get(relativePath);
+    if (!file) return false;
+    db.prepare('DELETE FROM file_tags WHERE file_id = ?').run(file.id);
+    db.prepare('DELETE FROM files WHERE id = ?').run(file.id);
+    return true;
+}
+
+export function getTagsTree(sort = 'alphabetical') {
+    const orderBy = {
+        recent: 'COALESCE(last_used_at, created_at) DESC, name COLLATE NOCASE ASC',
+        creation: 'created_at DESC, name COLLATE NOCASE ASC',
+        alphabetical: 'name COLLATE NOCASE ASC'
+    }[sort] || 'name COLLATE NOCASE ASC';
+    const rows = db.prepare(`SELECT id, name, parent_id AS parentId, created_at AS createdAt, last_used_at AS lastUsedAt FROM tags ORDER BY parent_id IS NOT NULL, ${orderBy}`).all();
     const categories = rows.filter((tag) => tag.parentId === null).map((category) => ({ ...category, children: [] }));
     const byId = new Map(categories.map((category) => [category.id, category]));
     for (const tag of rows.filter((item) => item.parentId !== null)) {

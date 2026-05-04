@@ -1,7 +1,6 @@
-import { mediaUrl } from '../api.js';
-import VideoPlayer from './VideoPlayer.jsx';
+import { thumbnailUrl } from '../api.js';
 
-export default function FileGrid({ items, selectedPaths, onToggleSelect, onOpenFolder, onLongPressSelect }) {
+export default function FileGrid({ items, selectedPaths, onToggleSelect, onOpenFolder, onLongPressSelect, onOpenFile }) {
     let longPressTimer;
     const startLongPress = (item) => {
         if (item.type === 'folder') return;
@@ -28,10 +27,11 @@ export default function FileGrid({ items, selectedPaths, onToggleSelect, onOpenF
                         )}
                         {item.type === 'folder' ? (
                             <button className="folder" onClick={() => onOpenFolder(item.path)}>📁</button>
-                        ) : item.type === 'image' ? (
-                            <img loading="lazy" src={mediaUrl(item.path)} alt={item.name} />
                         ) : (
-                            <VideoPlayer file={item} />
+                            <button className="thumb-button" onClick={() => onOpenFile(item)}>
+                                <img loading="lazy" src={thumbnailUrl(item)} alt={item.name} />
+                                {item.type === 'video' && <span className="play-overlay">▶</span>}
+                            </button>
                         )}
                         <div className="filename" title={item.path}>{item.name}</div>
                     </article>
