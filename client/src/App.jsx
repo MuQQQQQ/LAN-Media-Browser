@@ -64,7 +64,20 @@ export default function App() {
 
     useEffect(() => { loadTags().catch((err) => setError(err.message)); }, [tagSettings.sortMode]);
     useEffect(() => { if (!isTagsPage) load(); }, [currentPath, page, pageSize, isSearchPage, isTagsPage]);
-
+    useEffect(() => {
+            const handlePopState = () => {
+                if (viewerPath) {
+                    setViewerPath(''); // 关闭预览
+                }
+            };
+            window.addEventListener('popstate', handlePopState);
+            window.addEventListener('click', function() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                }
+            }, { once: true }); // 只执行一次
+            return () => window.removeEventListener('popstate', handlePopState);
+        }, [viewerPath]);
     const navigate = (path) => {
         setCurrentPath(path);
         setPage(1);
@@ -141,11 +154,11 @@ export default function App() {
                 <label>Page size <input type="number" min="1" max="200" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} /></label>
                 <button className="toolbar-push" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>Tag selected files ({selected.size})</button>
             </div>
-            <FileGrid items={items} selectedPaths={selected} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => setViewerPath(file.path)} />
+            <FileGrid items={items} selectedPaths={selected} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => {setViewerPath(file.path);window.history.pushState({ viewing: true }, '');}} />
             <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
             <ApplyTagsModal open={applyModalOpen} selectedCount={selected.size} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => setApplyModalOpen(false)} onApply={assignSelected} />
             <CreateTagModal open={createModalOpen} tagsTree={tagsTree} onClose={() => setCreateModalOpen(false)} onCreateTag={createTag} />
-            {viewerPath && <FullscreenViewer files={items.filter((item) => item.type !== 'folder')} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => setViewerPath('')} onApplyTags={assignPaths} onRemoveTags={removePaths} />}
+            {viewerPath && <FullscreenViewer files={items.filter((item) => item.type !== 'folder')} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => {setViewerPath('');if (window.history.state?.viewing) {window.history.back(); }}} onApplyTags={assignPaths} onRemoveTags={removePaths} />}
         </main>
     );
 }

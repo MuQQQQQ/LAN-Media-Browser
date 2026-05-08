@@ -46,230 +46,210 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
     const removeMissing = async () => { await api.removeFile(file.path); onClose(); };
     const distance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
     const clampZoom = (value) => Math.min(4, Math.max(1, value));
-    const onDoubleClick = (event) => {
-        const nextZoom = zoom === 1 ? 2 : 1;
+    const zoomLevels = [1, 2, 4];
+
+    const getPointRelativeToViewer = (clientX, clientY) => {
+        const rect = document.querySelector('.viewer-content')?.getBoundingClientRect();
+        if (!rect) return { x: 0, y: 0 };
+        return {
+            x: clientX - (rect.left + rect.width / 2),
+            y: clientY - (rect.top + rect.height / 2)
+        };
+    };
+
+    const zoomAtPoint = (clientX, clientY) => {
+        const currentZoom = Math.abs(zoom - 1) < 0.02 ? 1 : zoom;
+        const currentIndex = zoomLevels.findIndex((level) => Math.abs(level - currentZoom) < 0.02);
+        const nextZoom = zoomLevels[((currentIndex === -1 ? 0 : currentIndex) + 1) % zoomLevels.length];
+
+        if (nextZoom === 1) {
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+            return;
+        }
+
+        const point = getPointRelativeToViewer(clientX, clientY);
+        const scaleRatio = nextZoom / currentZoom;
         setZoom(nextZoom);
-        setPan(nextZoom === 1 ? { x: 0, y: 0 } : { x: 0, y: 0 });
-    };
-    // const onTouchStart = (event) => {
-    //     console.log('Touch start', zoom);
-    //     if (event.touches.length === 2) {
-    //         setTouch({
-    //             mode: 'pinch',
-    //             startDistance: distance(event.touches[0], event.touches[1]),
-    //             startZoom: zoom,
-    //             lastX: (event.touches[0].clientX + event.touches[1].clientX) / 2,
-    //             lastY: (event.touches[0].clientY + event.touches[1].clientY) / 2
-    //         });
-    //         return;
-    //     }
-    //     const point = event.touches[0];
-    //     setTouch({ mode: 'single', startX: point.clientX, startY: point.clientY, lastX: point.clientX, lastY: point.clientY, startedAt: Date.now() });
-    // };
-    // const onTouchMove = (event) => {
-    //     if (!touch) return;
-    //     if (touch.mode === 'pinch' && event.touches.length === 2) {
-    //         event.preventDefault();
-    //         const currentDistance = distance(event.touches[0], event.touches[1]);
-    //         const nextZoom = clampZoom(touch.startZoom * (currentDistance / touch.startDistance));
-    //         const centerX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
-    //         const centerY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
-    //         setZoom(nextZoom);
-    //         setPan((current) => ({ x: current.x + (centerX - touch.lastX), y: current.y + (centerY - touch.lastY) }));
-    //         setTouch((current) => current && { ...current, lastX: centerX, lastY: centerY });
-    //         return;
-    //     }
-    //     const point = event.touches[0];
-    //     const dx = point.clientX - touch.lastX;
-    //     const dy = point.clientY - touch.lastY;
-    //     const totalX = point.clientX - touch.startX;
-    //     const totalY = point.clientY - touch.startY;
-    //     if (zoom > 1) {
-    //         event.preventDefault();
-    //         setPan((current) => ({ x: current.x + dx, y: current.y + dy }));
-    //     } else if (Math.abs(totalX) > Math.abs(totalY)) {
-    //         event.preventDefault();
-    //     }
-    //     setTouch((current) => current && { ...current, lastX: point.clientX, lastY: point.clientY });
-    // };
-    // const onTouchEnd = (event) => {
-    //     if (!touch) return;
-    //     if (touch.mode === 'pinch') {
-    //         if (zoom <= 1.0) { setZoom(1); setPan({ x: 0, y: 0 }); }
-    //         setTouch(null);
-    //         return;
-    //     }
-    //     const dx = touch.lastX - touch.startX;
-    //     const dy = touch.lastY - touch.startY;
-    //     const horizontal = Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4;
-    //     const quickTap = Math.abs(dx) < 12 && Math.abs(dy) < 12 && Date.now() - touch.startedAt < 260;
-    //     if (quickTap) {
-    //         const now = Date.now();
-    //         if (onTouchEnd.lastTap && now - onTouchEnd.lastTap < 300) onDoubleClick(event);
-    //         onTouchEnd.lastTap = now;
-    //     } else if (horizontal) {
-    //         if (file.type === 'video' && zoom === 1) {
-    //             const video = document.querySelector('.viewer-content video');
-    //             if (video) video.currentTime += dx < 0 ? 8 : -8;
-    //         } else if (zoom === 1) {
-    //             dx < 0 ? goNext() : goPrevious();
-    //         }
-    //     }
-    //     setTouch(null);
-    // };
-
-    const onTouchStart = (event) => {
-        if (event.touches.length === 2) {
-            const centerX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
-            const centerY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
-
-            setTouch({
-                mode: 'pinch',
-                initialized: false,
-                lastX: centerX,
-                lastY: centerY
-            });
-            return;
-        }
-
-        const point = event.touches[0];
-
-        const video = document.querySelector('.viewer-content video');
-
-        setTouch({
-            mode: 'single',
-            startX: point.clientX,
-            startY: point.clientY,
-            lastX: point.clientX,
-            lastY: point.clientY,
-            startedAt: Date.now(),
-            startTime: video ? video.currentTime : null
-        });
-    };
-    const onTouchMove = (event) => {
-        if (!touch) return;
-
-        // ===== PINCH =====
-        if (touch.mode === 'pinch' && event.touches.length === 2) {
-            event.preventDefault();
-
-            const currentDistance = distance(event.touches[0], event.touches[1]);
-
-            // 👇 延迟初始化
-            if (!touch.initialized) {
-                setTouch((t) => ({
-                    ...t,
-                    startDistance: currentDistance,
-                    startZoom: zoom,
-                    initialized: true
-                }));
-                return;
-            }
-
-            const scale = currentDistance / touch.startDistance;
-
-            // 👇 threshold（防抖）
-            if (Math.abs(scale - 1) < 0.01) return;
-
-            const rawZoom = touch.startZoom * scale;
-
-            // 👇 平滑
-            const nextZoom = clampZoom(zoom * 0.8 + rawZoom * 0.2);
-
-            const centerX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
-            const centerY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
-
-            setZoom(nextZoom);
-
-            setPan((current) => ({
-                x: current.x + (centerX - touch.lastX),
-                y: current.y + (centerY - touch.lastY)
-            }));
-
-            setTouch((t) => ({
-                ...t,
-                lastX: centerX,
-                lastY: centerY
-            }));
-
-            return;
-        }
-
-        // ===== SINGLE TOUCH =====
-        const point = event.touches[0];
-        const dx = point.clientX - touch.lastX;
-        const dy = point.clientY - touch.lastY;
-        const totalX = point.clientX - touch.startX;
-        const totalY = point.clientY - touch.startY;
-
-        const video = document.querySelector('.viewer-content video');
-
-        if (zoom > 1) {
-            event.preventDefault();
-            setPan((current) => ({
-                x: current.x + dx,
-                y: current.y + dy
-            }));
-        }
-        // 👇 视频拖动（实时 scrub）
-        else if (video && Math.abs(totalX) > Math.abs(totalY)) {
-            event.preventDefault();
-
-            const sensitivity = 0.05; // 👈 可调（越大越快）
-            const delta = totalX * sensitivity;
-
-            const nextTime = Math.max(
-                0,
-                Math.min(video.duration, touch.startTime + delta)
-            );
-
-            video.currentTime = nextTime;
-        }
-        else if (Math.abs(totalX) > Math.abs(totalY)) {
-            event.preventDefault();
-        }
-
-        setTouch((t) => ({
-            ...t,
-            lastX: point.clientX,
-            lastY: point.clientY
+        setPan((currentPan) => ({
+            x: point.x - (point.x - currentPan.x) * scaleRatio,
+            y: point.y - (point.y - currentPan.y) * scaleRatio
         }));
     };
-    const onTouchEnd = (event) => {
-        if (!touch) return;
 
-        if (touch.mode === 'pinch') {
-            if (zoom <= 1.0) {
-                setZoom(1);
-                setPan({ x: 0, y: 0 });
-            }
-            setTouch(null);
+    const onDoubleClick = (event) => {
+        zoomAtPoint(event.clientX, event.clientY);
+    };
+    const onTouchStart = (event) => {
+    if (event.touches.length === 2) {
+        const cx = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+        const cy = (event.touches[0].clientY + event.touches[1].clientY) / 2;
+
+        setTouch({
+            mode: 'pinch',
+            initialized: false,
+            lastX: cx,
+            lastY: cy
+        });
+        return;
+    }
+
+    const point = event.touches[0];
+    const video = document.querySelector('.viewer-content video');
+
+    setTouch({
+        mode: 'single',
+        gesture: null, // 👈 新增（pan / swipe / scrub）
+        startX: point.clientX,
+        startY: point.clientY,
+        lastX: point.clientX,
+        lastY: point.clientY,
+        startedAt: Date.now(),
+        startTime: video ? video.currentTime : null,
+        lastTime: Date.now(),   // 👈 新增
+        velocityX: 0            // 👈 新增
+    });
+};
+    const onTouchMove = (event) => {
+    if (!touch) return;
+
+    // ===== PINCH =====
+    if (touch.mode === 'pinch' && event.touches.length === 2) {
+        event.preventDefault();
+
+        const d = distance(event.touches[0], event.touches[1]);
+
+        if (!touch.initialized) {
+            setTouch(t => ({
+                ...t,
+                startDistance: d,
+                startZoom: zoom,
+                initialized: true
+            }));
             return;
         }
 
-        const dx = touch.lastX - touch.startX;
-        const dy = touch.lastY - touch.startY;
+        const scale = d / touch.startDistance;
+        if (Math.abs(scale - 1) < 0.01) return;
 
-        const horizontal = Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4;
-        const quickTap =
-            Math.abs(dx) < 12 &&
-            Math.abs(dy) < 12 &&
-            Date.now() - touch.startedAt < 260;
+        const rawZoom = touch.startZoom * scale;
+        const nextZoom = clampZoom(zoom * 0.8 + rawZoom * 0.2);
 
-        if (quickTap) {
-            const now = Date.now();
-            if (onTouchEnd.lastTap && now - onTouchEnd.lastTap < 300) {
-                onDoubleClick(event);
-            }
-            onTouchEnd.lastTap = now;
+        const cx = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+        const cy = (event.touches[0].clientY + event.touches[1].clientY) / 2;
+
+        setZoom(nextZoom);
+
+        setPan(p => ({
+            x: p.x + (cx - touch.lastX),
+            y: p.y + (cy - touch.lastY)
+        }));
+
+        setTouch(t => ({ ...t, lastX: cx, lastY: cy }));
+        return;
+    }
+
+    // ===== SINGLE =====
+    const point = event.touches[0];
+    const now = Date.now();
+    const dt = now - touch.lastTime;
+    const dx = point.clientX - touch.lastX;
+    const dy = point.clientY - touch.lastY;
+    const totalX = point.clientX - touch.startX;
+    const totalY = point.clientY - touch.startY;
+    const vx = dx / dt; // px/ms
+    const smoothVX = touch.velocityX * 0.7 + vx * 0.3;
+
+    const absX = Math.abs(totalX);
+    const absY = Math.abs(totalY);
+
+    const video = document.querySelector('.viewer-content video');
+
+    const SWIPE_OVERRIDE = 13;
+    const VELOCITY_THRESHOLD = 0.1; // 👈 关键（可调）
+
+    let gesture = touch.gesture;
+
+    // 👇 手势判定（只判定一次）
+    if (!gesture) {
+        if (Math.abs(smoothVX) > VELOCITY_THRESHOLD && absX > absY * 1.2) {
+            gesture = 'swipe';
+        } else if (video && absX > absY) {
+            gesture = 'scrub';
+        } else if (zoom > 1) {
+            gesture = 'pan';
+        } else if (absX > absY) {
+            gesture = 'swipe';
         }
-        // 👇 图片左右切换（视频不再用 end 判断）
-        else if (horizontal && zoom === 1 && file.type !== 'video') {
+
+        if (gesture) {
+            setTouch(t => ({ ...t, gesture }));
+        }
+    }
+
+    // ===== 执行手势 =====
+
+    // 👉 pan
+    if (gesture === 'pan') {
+        event.preventDefault();
+        setPan(p => ({
+            x: p.x + dx,
+            y: p.y + dy
+        }));
+    }
+
+    // 👉 swipe（只移动视觉，不立即切换）
+    else if (gesture === 'swipe') {
+        event.preventDefault();
+        setPan(p => ({
+            ...p,
+            x: totalX // 👈 用 total 做拖拽效果
+        }));
+    }
+
+    // 👉 视频 scrub
+    else if (gesture === 'scrub' && video) {
+        event.preventDefault();
+
+        // 👇 强制显示 controls
+        video.controls = true;
+
+        const sensitivity = 0.05;
+        const delta = totalX * sensitivity;
+
+        const nextTime = Math.max(
+            0,
+            Math.min(video.duration, touch.startTime + delta)
+        );
+
+        video.currentTime = nextTime;
+    }
+
+    setTouch(t => ({
+        ...t,
+        lastX: point.clientX,
+        lastY: point.clientY
+    }));
+};
+const onTouchEnd = () => {
+    if (!touch) return;
+
+    const dx = touch.lastX - touch.startX;
+
+    const video = document.querySelector('.viewer-content video');
+
+    if (touch.gesture === 'swipe') {
+        if (Math.abs(dx) > 80) {
             dx < 0 ? goNext() : goPrevious();
+        } else {
+            // 👇 回弹
+            setPan({ x: 0, y: 0 });
         }
+    }
 
-        setTouch(null);
-    };
+
+    setTouch(null);
+};
     return (
         <div className={`viewer ${showMetadata ? 'metadata-open' : 'metadata-hidden'}`} role="dialog" aria-modal="true">
             <button className="viewer-close" onClick={onClose}>✕</button>
@@ -293,10 +273,10 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
                 <button onClick={goPrevious}>Previous</button>
                 <span className="viewer-count">{currentIndex + 1} / {files.length}</span>
                 <button onClick={goNext}>Next</button>
-                <div className="viewer-previews">
+                {/* <div className="viewer-previews">
                     {previous && <button onClick={goPrevious}><img src={thumbnailUrl(previous)} alt={previous.name} />Prev</button>}
                     {next && <button onClick={goNext}><img src={thumbnailUrl(next)} alt={next.name} />Next</button>}
-                </div>
+                </div> */}
             </div>
         </div>
     );
