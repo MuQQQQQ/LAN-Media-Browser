@@ -1,5 +1,6 @@
 export const mediaUrl = (path) => `/media?path=${encodeURIComponent(path)}`;
 export const thumbnailUrl = (file) => `/api/thumbnail/${file.type}?path=${encodeURIComponent(file.path)}`;
+export const browseUrl = (path, pageSize) => `/?${new URLSearchParams({ path, page: 1, ...(pageSize ? { pageSize } : {}) })}`;
 
 async function request(path, options) {
     const response = await fetch(path, {

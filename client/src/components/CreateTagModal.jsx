@@ -4,9 +4,10 @@ export default function CreateTagModal({ open, tagsTree, onClose, onCreateTag })
     const [mode, setMode] = useState('level1');
     const [name, setName] = useState('');
     const [parentId, setParentId] = useState('');
+    const [color, setColor] = useState('#64748b');
     if (!open) return null;
     const create = async () => {
-        await onCreateTag({ name, parentId: mode === 'level2' ? parentId : undefined });
+        await onCreateTag({ name, color, parentId: mode === 'level2' ? parentId : undefined });
         setName('');
     };
     return (
@@ -24,6 +25,7 @@ export default function CreateTagModal({ open, tagsTree, onClose, onCreateTag })
                     </select>
                 )}
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder={mode === 'level1' ? 'Character' : 'Red dress'} />
+                <label className="color-field">Tag color <input type="color" value={color} onChange={(e) => setColor(e.target.value)} /></label>
                 <div className="actions">
                     <button disabled={!name.trim() || (mode === 'level2' && !parentId)} onClick={create}>Create</button>
                     <button className="secondary" onClick={onClose}>Cancel</button>

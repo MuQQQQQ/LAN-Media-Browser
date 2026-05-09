@@ -44,6 +44,9 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
     const apply = async () => { await onApplyTags([file.path], selectedTagIds); await refreshTags(); };
     const remove = async () => { await onRemoveTags([file.path], selectedTagIds); await refreshTags(); };
     const removeMissing = async () => { await api.removeFile(file.path); onClose(); };
+    const searchByTag = (tag) => {
+        window.open(`/search?${new URLSearchParams({ tags: tag.id, tagMode: 'and', page: 1, pageSize: 50 })}`, '_blank', 'noopener,noreferrer');
+    };
     const distance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
     const clampZoom = (value) => Math.min(4, Math.max(1, value));
     const zoomLevels = [1, 2, 4];
@@ -260,7 +263,7 @@ const onTouchEnd = () => {
             {showMetadata && <aside className="viewer-meta">
                 <h2>{file.name}</h2>
                 <h3>Applied tags</h3>
-                <div className="chips">{fileTags.length ? fileTags.map((tag) => <span className="chip readonly" key={tag.id}>{tagNameById.get(tag.id) || tag.name}</span>) : <span className="muted">No tags</span>}</div>
+                <div className="chips">{fileTags.length ? fileTags.map((tag) => <button className="chip clickable-tag" style={{ '--tag-color': tag.color || '#64748b' }} key={tag.id} onClick={() => searchByTag(tag)} title="Search files with this tag">{tagNameById.get(tag.id) || tag.name}</button>) : <span className="muted">No tags</span>}</div>
                 <h3>Edit tags</h3>
                 <div className="compact-tags"><TagGroupList tagsTree={tagsTree} selectedTagIds={selectedTagIds} onToggleTag={toggle} displayMode={tagSettings.displayMode} /></div>
                 <div className="actions"><button disabled={!selectedTagIds.length} onClick={apply}>Add</button><button className="secondary" disabled={!selectedTagIds.length} onClick={remove}>Remove</button></div>

@@ -4,6 +4,7 @@ import { saveTagSettings } from '../tagSettings.js';
 export default function TagsPage({ tagsTree, tagSettings, setTagSettings, onCreateTag, onUpdateTag, onDeleteTag }) {
     const [name, setName] = useState('');
     const [parentId, setParentId] = useState('');
+    const [color, setColor] = useState('#64748b');
     const [editing, setEditing] = useState({});
     const updateSettings = (patch) => {
         const next = { ...tagSettings, ...patch };
@@ -11,7 +12,7 @@ export default function TagsPage({ tagsTree, tagSettings, setTagSettings, onCrea
         saveTagSettings(next);
     };
     const create = async () => {
-        await onCreateTag({ name, parentId: parentId || undefined });
+        await onCreateTag({ name, color, parentId: parentId || undefined });
         setName('');
     };
     const categories = tagsTree.filter((category) => category.parentId === null);
@@ -25,9 +26,10 @@ export default function TagsPage({ tagsTree, tagSettings, setTagSettings, onCrea
             </section>
             <section className="panel">
                 <h2>Create tag</h2>
-                <div className="inline-form">
+                <div className="inline-form tag-create-form">
                     <select value={parentId} onChange={(e) => setParentId(e.target.value)}><option value="">Level 1 category</option>{categories.map((category) => <option key={category.id} value={category.id}>Sub-tag under {category.name}</option>)}</select>
                     <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tag name" />
+                    <input type="color" value={color} onChange={(e) => setColor(e.target.value)} title="Tag color" />
                     <button disabled={!name.trim()} onClick={create}>Create</button>
                 </div>
             </section>
@@ -47,16 +49,17 @@ export default function TagsPage({ tagsTree, tagSettings, setTagSettings, onCrea
 }
 
 function TagEditor({ tag, categories, editing, setEditing, onUpdateTag, onDeleteTag, isCategory = false }) {
-    const draft = editing[tag.id] || { name: tag.name, parentId: tag.parentId || '' };
+    const draft = editing[tag.id] || { name: tag.name, parentId: tag.parentId || '', color: tag.color || '#64748b' };
     const setDraft = (patch) => setEditing((all) => ({ ...all, [tag.id]: { ...draft, ...patch } }));
     const save = async () => {
-        await onUpdateTag(tag.id, { name: draft.name, parentId: isCategory ? null : draft.parentId });
+        await onUpdateTag(tag.id, { name: draft.name, parentId: isCategory ? null : draft.parentId, color: draft.color });
         setEditing((all) => { const next = { ...all }; delete next[tag.id]; return next; });
     };
     return (
         <div className={`tag-editor ${isCategory ? 'category-row' : ''}`}>
             <input value={draft.name} onChange={(e) => setDraft({ name: e.target.value })} />
             {!isCategory && <select value={draft.parentId} onChange={(e) => setDraft({ parentId: e.target.value })}>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>}
+            <input type="color" value={draft.color} onChange={(e) => setDraft({ color: e.target.value })} title="Tag color" />
             <span className="muted">Created: {tag.createdAt || '-'}</span>
             <span className="muted">Last used: {tag.lastUsedAt || '-'}</span>
             <button onClick={save}>Save</button>

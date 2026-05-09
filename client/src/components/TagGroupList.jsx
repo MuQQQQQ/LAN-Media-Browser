@@ -9,12 +9,12 @@ export default function TagGroupList({ tagsTree, selectedTagIds = [], onToggleTa
                 const visibleTags = isExpanded ? category.children : category.children.slice(0, limit);
                 return (
                     <div className="tag-group" key={category.id}>
-                        <strong>{category.name}</strong>
+                        <strong className="tag-category-title"><span className="tag-color-dot" style={{ backgroundColor: category.color || '#64748b' }} />{category.name}</strong>
                         <div className="chips">
                             {visibleTags.map((tag) => {
                                 const selected = selectedTagIds.includes(tag.id);
                                 const recent = recentHighlight && tag.lastUsedAt;
-                                return <button key={tag.id} className={`${selected ? 'chip active' : 'chip'} ${recent ? 'recent' : ''}`} onClick={() => onToggleTag?.(tag.id)}>{tag.name}</button>;
+                                return <button key={tag.id} className={`${selected ? 'chip active' : 'chip'} ${recent ? 'recent' : ''}`} style={{ '--tag-color': tag.color || '#64748b' }} onClick={() => onToggleTag?.(tag.id)}>{tag.name}</button>;
                             })}
                         </div>
                         {category.children.length > limit && <button className="link-button" onClick={() => setExpanded((x) => ({ ...x, [category.id]: !isExpanded }))}>{isExpanded ? 'Show less' : `Show more (${category.children.length - limit})`}</button>}

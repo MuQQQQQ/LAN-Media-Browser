@@ -1,6 +1,6 @@
-import { thumbnailUrl } from '../api.js';
+import { browseUrl, thumbnailUrl } from '../api.js';
 
-export default function FileGrid({ items, selectedPaths, onToggleSelect, onOpenFolder, onLongPressSelect, onOpenFile }) {
+export default function FileGrid({ items, selectedPaths, onToggleSelect, onOpenFolder, onLongPressSelect, onOpenFile, pageSize }) {
     let longPressTimer;
     const startLongPress = (item) => {
         if (item.type === 'folder') return;
@@ -26,7 +26,10 @@ export default function FileGrid({ items, selectedPaths, onToggleSelect, onOpenF
                             </label>
                         )}
                         {item.type === 'folder' ? (
-                            <button className="folder" onClick={() => onOpenFolder(item.path)}>📁</button>
+                            <a className={`folder ${item.preview ? 'folder-with-preview' : ''}`} href={browseUrl(item.path, pageSize)} target="_blank" rel="noreferrer" onClick={(event) => { event.preventDefault(); onOpenFolder(item.path); }}>
+                                {item.preview ? <img loading="lazy" src={thumbnailUrl({ path: item.preview.path, type: item.preview.type })} alt={`${item.name} preview`} /> : <span className="folder-icon">📁</span>}
+                                <span className="folder-badge">📁</span>
+                            </a>
                         ) : (
                             <button className="thumb-button" onClick={() => onOpenFile(item)}>
                                 <img loading="lazy" src={thumbnailUrl(item)} alt={item.name} />

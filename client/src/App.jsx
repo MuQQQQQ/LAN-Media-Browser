@@ -10,7 +10,7 @@ import SearchPanel from './components/SearchPanel.jsx';
 import TagsPage from './components/TagsPage.jsx';
 import { loadTagSettings, saveTagSettings } from './tagSettings.js';
 
-const defaultFilters = { nameEnabled: false, name: '', tags: [], tagMode: 'and' };
+const defaultFilters = { name: '', tags: [], tagMode: 'and', tagSearchEnabled: false };
 
 function updateUrl(params) {
     const next = new URLSearchParams(params);
@@ -71,17 +71,20 @@ export default function App() {
                 }
             };
             window.addEventListener('popstate', handlePopState);
-            window.addEventListener('click', function() {
-                if (!document.fullscreenElement) {
-                    document.documentElement.requestFullscreen();
-                }
-            }, { once: true }); // 只执行一次
+            // window.addEventListener('click', function() {
+            //     if (!document.fullscreenElement) {
+            //         document.documentElement.requestFullscreen();
+            //     }
+            // }, { once: true }); 
             return () => window.removeEventListener('popstate', handlePopState);
         }, [viewerPath]);
     const navigate = (path) => {
-        setCurrentPath(path);
-        setPage(1);
-        setSelected(new Set());
+        window.location.href = `/?${new URLSearchParams({
+            path,
+            page: 1,
+            pageSize
+        })}`;
+        // window.open(`/?${new URLSearchParams({ path, page: 1, pageSize })}`, '_blank', 'noopener,noreferrer');
     };
     const toggleSelect = (path) => setSelected((prev) => {
         const next = new Set(prev);
@@ -90,8 +93,8 @@ export default function App() {
     });
     const runSearch = () => {
         const params = new URLSearchParams({ tagMode: filters.tagMode, page: 1, pageSize });
-        if (filters.tags.length) params.set('tags', filters.tags.join(','));
-        if (filters.nameEnabled && filters.name.trim()) params.set('name', filters.name.trim());
+        if (filters.tagSearchEnabled && filters.tags.length) params.set('tags', filters.tags.join(','));
+        if (filters.name.trim()) params.set('name', filters.name.trim());
         window.open(`/search?${params}`, '_blank');
     };
     const clearFilters = () => {
@@ -147,14 +150,14 @@ export default function App() {
                     <span>Tags: {url.get('tags') || 'Any'}</span>
                 </section>
             ) : (
-                <Breadcrumbs path={currentPath} onNavigate={navigate} />
+                <Breadcrumbs path={currentPath} onNavigate={navigate} pageSize={pageSize} />
             )}
             {error && <div className="error">{error}</div>}
             <div className="toolbar">
                 <label>Page size <input type="number" min="1" max="200" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} /></label>
                 <button className="toolbar-push" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>Tag selected files ({selected.size})</button>
             </div>
-            <FileGrid items={items} selectedPaths={selected} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => {setViewerPath(file.path);window.history.pushState({ viewing: true }, '');}} />
+            <FileGrid items={items} selectedPaths={selected} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => {setViewerPath(file.path);window.history.pushState({ viewing: true }, '');}} pageSize={pageSize} />
             <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
             <ApplyTagsModal open={applyModalOpen} selectedCount={selected.size} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => setApplyModalOpen(false)} onApply={assignSelected} />
             <CreateTagModal open={createModalOpen} tagsTree={tagsTree} onClose={() => setCreateModalOpen(false)} onCreateTag={createTag} />

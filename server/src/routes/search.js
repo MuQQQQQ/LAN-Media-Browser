@@ -19,7 +19,7 @@ searchRouter.get('/', (req, res, next) => {
         const where = [];
         const params = [];
         if (name) {
-            where.push('LOWER(f.path) LIKE ?');
+            where.push('LOWER(COALESCE(f.name, f.path)) LIKE ?');
             params.push(`%${name}%`);
         }
 

@@ -1,11 +1,43 @@
 import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
-import { ensureFile } from '../db.js';
+import { config } from '../config.js';
+import { clearFolderPreview, ensureFile, getFolderPreview, setFolderPreview } from '../db.js';
 import { getMediaType } from '../mediaTypes.js';
 import { resolveSafePath, toRelativeDbPath } from '../pathSafety.js';
 
 export const browseRouter = express.Router();
+
+async function exists(filePath) {
+    return fs.access(filePath).then(() => true).catch(() => false);
+}
+
+async function findFirstChildMedia(folderAbsolutePath) {
+    const entries = await fs.readdir(folderAbsolutePath, { withFileTypes: true });
+    const files = entries
+        .filter((entry) => entry.isFile() && getMediaType(path.extname(entry.name)))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    const first = files[0];
+    if (!first) return null;
+    const absolutePath = path.join(folderAbsolutePath, first.name);
+    const relativePath = toRelativeDbPath(absolutePath);
+    const mediaType = getMediaType(path.extname(first.name));
+    ensureFile(relativePath);
+    return { filePath: relativePath, mediaType };
+}
+
+async function getCachedFolderPreview(folderRelativePath, folderAbsolutePath) {
+    const cached = getFolderPreview(folderRelativePath);
+    if (cached) {
+        const cachedAbsolutePath = path.resolve(config.baseFolder, cached.filePath);
+        if (await exists(cachedAbsolutePath).catch(() => false)) return { path: cached.filePath, type: cached.mediaType };
+        clearFolderPreview(folderRelativePath);
+    }
+    const preview = await findFirstChildMedia(folderAbsolutePath);
+    if (!preview) return null;
+    setFolderPreview(folderRelativePath, preview.filePath, preview.mediaType);
+    return { path: preview.filePath, type: preview.mediaType };
+}
 
 browseRouter.get('/', async (req, res, next) => {
     try {
@@ -23,7 +55,8 @@ browseRouter.get('/', async (req, res, next) => {
             const absoluteEntryPath = path.join(absolutePath, entry.name);
             const childRelative = toRelativeDbPath(absoluteEntryPath);
             if (entry.isDirectory()) {
-                folders.push({ name: entry.name, path: childRelative, type: 'folder' });
+                const preview = await getCachedFolderPreview(childRelative, absoluteEntryPath).catch(() => null);
+                folders.push({ name: entry.name, path: childRelative, type: 'folder', preview });
             } else if (entry.isFile()) {
                 const mediaType = getMediaType(path.extname(entry.name));
                 if (mediaType) {
