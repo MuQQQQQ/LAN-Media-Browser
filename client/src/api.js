@@ -20,12 +20,19 @@ export const api = {
     createTag: (payload) => request('/api/tags', { method: 'POST', body: JSON.stringify(payload) }),
     updateTag: (id, payload) => request(`/api/tags/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
     deleteTag: (id) => request(`/api/tags/${id}`, { method: 'DELETE' }),
-    removeFile: (path) => request(`/api/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
-    fileTags: (path) => request(`/api/tags/file?path=${encodeURIComponent(path)}`),
+    removeFile: (path, type = 'file') => request(`/api/files?path=${encodeURIComponent(path)}&type=${encodeURIComponent(type)}`, { method: 'DELETE' }),
+    deleteItems: (items) => request('/api/files/delete', { method: 'POST', body: JSON.stringify({ items }) }),
+    orphanRecords: () => request('/api/files/orphans'),
+    cleanupOrphans: () => request('/api/files/orphans/cleanup', { method: 'POST', body: JSON.stringify({}) }),
+    fileTags: (path, type = 'file') => request(`/api/tags/file?path=${encodeURIComponent(path)}&type=${encodeURIComponent(type)}`),
     assignTags: (payload) => request('/api/tags/assign', { method: 'POST', body: JSON.stringify(payload) }),
     removeTags: (payload) => request('/api/tags/remove', { method: 'POST', body: JSON.stringify(payload) }),
-    search: ({ tags = [], tagMode = 'and', name = '', page = 1, pageSize = 50 }) => {
-        const params = new URLSearchParams({ tagMode, name, page, pageSize });
+    tagAnalysis: (items) => request('/api/tags/analysis', { method: 'POST', body: JSON.stringify({ items }) }),
+    favorites: ({ sort = 'time', type = 'all' } = {}) => request(`/api/favorites?sort=${encodeURIComponent(sort)}&type=${encodeURIComponent(type)}`),
+    addFavorite: (item) => request('/api/favorites', { method: 'POST', body: JSON.stringify(item) }),
+    removeFavorite: (item) => request(`/api/favorites?path=${encodeURIComponent(item.path)}&type=${encodeURIComponent(item.type === 'folder' ? 'folder' : 'file')}`, { method: 'DELETE' }),
+    search: ({ tags = [], tagMode = 'and', q = '', name = '', matchType = 'contains', scope = 'both', caseSensitive = false, itemType = 'all', page = 1, pageSize = 50 }) => {
+        const params = new URLSearchParams({ tagMode, q: q || name, matchType, scope, caseSensitive, itemType, page, pageSize });
         if (tags.length) params.set('tags', tags.join(','));
         return request(`/api/search?${params}`);
     }

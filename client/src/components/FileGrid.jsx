@@ -1,9 +1,8 @@
 import { browseUrl, thumbnailUrl } from '../api.js';
 
-export default function FileGrid({ items, selectedPaths, onToggleSelect, onOpenFolder, onLongPressSelect, onOpenFile, pageSize }) {
+export default function FileGrid({ items, selectedPaths, onToggleSelect, onOpenFolder, onLongPressSelect, onOpenFile, onToggleFavorite, onDeleteItem, pageSize }) {
     let longPressTimer;
     const startLongPress = (item) => {
-        if (item.type === 'folder') return;
         longPressTimer = setTimeout(() => onLongPressSelect(item.path), 450);
     };
     const clearLongPress = () => clearTimeout(longPressTimer);
@@ -20,11 +19,11 @@ export default function FileGrid({ items, selectedPaths, onToggleSelect, onOpenF
                         onPointerUp={clearLongPress}
                         onPointerLeave={clearLongPress}
                     >
-                        {item.type !== 'folder' && (
-                            <label className="check">
-                                <input type="checkbox" checked={selected} onChange={() => onToggleSelect(item.path)} />
-                            </label>
-                        )}
+                        <label className="check">
+                            <input type="checkbox" checked={selected} onChange={() => onToggleSelect(item.path)} />
+                        </label>
+                        <button className={`favorite-button ${item.favorite ? 'active' : ''}`} title={item.favorite ? 'Remove from favorites' : 'Add to favorites'} onClick={() => onToggleFavorite?.(item)}>{item.favorite ? '★' : '☆'}</button>
+                        <button className="delete-card-button" title="Delete item" onClick={() => onDeleteItem?.(item)}>🗑</button>
                         {item.type === 'folder' ? (
                             <a className={`folder ${item.preview ? 'folder-with-preview' : ''}`} href={browseUrl(item.path, pageSize)} target="_blank" rel="noreferrer" onClick={(event) => { event.preventDefault(); onOpenFolder(item.path); }}>
                                 {item.preview ? <img loading="lazy" src={thumbnailUrl({ path: item.preview.path, type: item.preview.type })} alt={`${item.name} preview`} /> : <span className="folder-icon">📁</span>}
@@ -36,6 +35,7 @@ export default function FileGrid({ items, selectedPaths, onToggleSelect, onOpenF
                                 {item.type === 'video' && <span className="play-overlay">▶</span>}
                             </button>
                         )}
+                        {item.tags?.length > 0 && <div className="card-tags">{item.tags.slice(0, 3).map((tag) => <span key={tag.id} className="mini-tag" style={{ '--tag-color': tag.color || '#64748b' }}>{tag.name}</span>)}</div>}
                         <div className="filename" title={item.path}>{item.name}</div>
                     </article>
                 );

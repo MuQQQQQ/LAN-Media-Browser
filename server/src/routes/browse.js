@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
 import { config } from '../config.js';
-import { clearFolderPreview, ensureFile, getFolderPreview, setFolderPreview } from '../db.js';
+import { clearFolderPreview, decorateItems, ensureFile, ensureFolder, getFolderPreview, setFolderPreview } from '../db.js';
 import { getMediaType } from '../mediaTypes.js';
 import { resolveSafePath, toRelativeDbPath } from '../pathSafety.js';
 
@@ -55,8 +55,9 @@ browseRouter.get('/', async (req, res, next) => {
             const absoluteEntryPath = path.join(absolutePath, entry.name);
             const childRelative = toRelativeDbPath(absoluteEntryPath);
             if (entry.isDirectory()) {
+                const folder = ensureFolder(childRelative);
                 const preview = await getCachedFolderPreview(childRelative, absoluteEntryPath).catch(() => null);
-                folders.push({ name: entry.name, path: childRelative, type: 'folder', preview });
+                folders.push({ id: folder.id, name: entry.name, path: childRelative, type: 'folder', preview });
             } else if (entry.isFile()) {
                 const mediaType = getMediaType(path.extname(entry.name));
                 if (mediaType) {
@@ -68,7 +69,7 @@ browseRouter.get('/', async (req, res, next) => {
 
         folders.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
         files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-        const combined = [...folders, ...files];
+        const combined = decorateItems([...folders, ...files]);
         const total = combined.length;
         const offset = (page - 1) * pageSize;
         res.json({ path: relativePath, page, pageSize, total, items: combined.slice(offset, offset + pageSize) });

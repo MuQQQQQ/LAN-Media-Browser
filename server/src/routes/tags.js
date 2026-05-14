@@ -1,5 +1,5 @@
 import express from 'express';
-import { db, ensureFile, getTagsTree } from '../db.js';
+import { db, ensureItem, getItemTags, getTagsTree } from '../db.js';
 import { normalizeRelativePath } from '../pathSafety.js';
 
 export const tagsRouter = express.Router();
@@ -68,14 +68,29 @@ tagsRouter.delete('/:id', (req, res) => {
 });
 
 tagsRouter.get('/file', (req, res) => {
-    const file = ensureFile(normalizeRelativePath(req.query.path || ''));
-    const tags = db.prepare(`
-        SELECT t.id, t.name, t.parent_id AS parentId, t.created_at AS createdAt, t.last_used_at AS lastUsedAt, t.color
-        FROM tags t JOIN file_tags ft ON ft.tag_id = t.id
-        WHERE ft.file_id = ?
-        ORDER BY t.name COLLATE NOCASE
-    `).all(file.id);
+    const itemType = String(req.query.type || 'file') === 'folder' ? 'folder' : 'file';
+    const file = ensureItem(normalizeRelativePath(req.query.path || ''), itemType);
+    const tags = getItemTags(file.id);
     res.json({ file, tags });
+});
+
+tagsRouter.post('/analysis', (req, res) => {
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    const normalized = items.map((item) => ensureItem(normalizeRelativePath(item.path || ''), item.type === 'folder' ? 'folder' : 'file'));
+    if (!normalized.length) return res.json({ common: [], partial: [] });
+    const placeholders = normalized.map(() => '?').join(',');
+    const rows = db.prepare(`
+        SELECT t.id, t.name, t.parent_id AS parentId, t.created_at AS createdAt, t.last_used_at AS lastUsedAt, t.color, COUNT(DISTINCT ft.file_id) AS count
+        FROM tags t
+        JOIN file_tags ft ON ft.tag_id = t.id
+        WHERE ft.file_id IN (${placeholders})
+        GROUP BY t.id
+        ORDER BY t.name COLLATE NOCASE
+    `).all(...normalized.map((item) => item.id));
+    res.json({
+        common: rows.filter((tag) => tag.count === normalized.length),
+        partial: rows.filter((tag) => tag.count > 0 && tag.count < normalized.length)
+    });
 });
 
 tagsRouter.post('/assign', (req, res) => {
@@ -85,7 +100,7 @@ tagsRouter.post('/assign', (req, res) => {
     const touch = db.prepare('UPDATE tags SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?');
     const tx = db.transaction(() => {
         for (const filePath of paths) {
-            const file = ensureFile(normalizeRelativePath(filePath));
+            const file = ensureItem(normalizeRelativePath(typeof filePath === 'string' ? filePath : filePath.path), filePath?.type === 'folder' ? 'folder' : 'file');
             for (const tagId of tagIds) {
                 insert.run(file.id, tagId);
                 touch.run(tagId);
@@ -102,7 +117,7 @@ tagsRouter.post('/remove', (req, res) => {
     const remove = db.prepare('DELETE FROM file_tags WHERE file_id = ? AND tag_id = ?');
     const tx = db.transaction(() => {
         for (const filePath of paths) {
-            const file = ensureFile(normalizeRelativePath(filePath));
+            const file = ensureItem(normalizeRelativePath(typeof filePath === 'string' ? filePath : filePath.path), filePath?.type === 'folder' ? 'folder' : 'file');
             for (const tagId of tagIds) remove.run(file.id, tagId);
         }
     });

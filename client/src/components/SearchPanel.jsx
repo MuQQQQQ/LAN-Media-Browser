@@ -4,10 +4,12 @@ import TagGroupList from './TagGroupList.jsx';
 const HISTORY_KEY = 'lan-media-search-history';
 
 export default function SearchPanel({ tagsTree, filters, setFilters, onSearch, onClear }) {
+    const [advancedOpen, setAdvancedOpen] = useState(false);
     const [history, setHistory] = useState(() => {
         try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
     });
-    const hasTyped = filters.name.trim().length > 0;
+    const queryValue = filters.q ?? filters.name ?? '';
+    const hasTyped = queryValue.trim().length > 0;
     const showOptions = hasTyped || filters.tagSearchEnabled || filters.tags.length > 0;
     const tagNameById = useMemo(() => new Map(tagsTree.flatMap((category) => category.children.map((tag) => [tag.id, `${category.name} / ${tag.name}`]))), [tagsTree]);
 
@@ -22,20 +24,33 @@ export default function SearchPanel({ tagsTree, filters, setFilters, onSearch, o
         }));
     };
     const search = () => {
-        const label = filters.name.trim() || (filters.tags.length ? filters.tags.map((id) => tagNameById.get(id) || `#${id}`).join(', ') : 'All files');
+        const label = queryValue.trim() || (filters.tags.length ? filters.tags.map((id) => tagNameById.get(id) || `#${id}`).join(', ') : 'All files');
         const entry = { label, filters: { ...filters }, at: Date.now() };
         setHistory((items) => [entry, ...items.filter((item) => JSON.stringify(item.filters) !== JSON.stringify(entry.filters))].slice(0, 12));
         onSearch();
     };
     const applyHistory = (entry) => setFilters({ ...entry.filters });
+    const suggestions = useMemo(() => {
+        const term = queryValue.trim().toLowerCase();
+        if (!term) return [];
+        return tagsTree.flatMap((category) => category.children.map((tag) => ({ ...tag, label: `${category.name} / ${tag.name}` }))).filter((tag) => tag.label.toLowerCase().includes(term) || tag.name.toLowerCase().includes(term)).slice(0, 8);
+    }, [queryValue, tagsTree]);
     return (
         <section className="panel search-panel">
             <div className="search-entry">
-                <input placeholder="Search by file name…" value={filters.name} onChange={(e) => setFilters((f) => ({ ...f, name: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') search(); }} />
+                <button className="advanced-toggle" title="Advanced Options" onClick={() => setAdvancedOpen((x) => !x)}>{advancedOpen ? '▾' : '▸'}</button>
+                <input placeholder="Search names and tags…" value={queryValue} onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value, name: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') search(); }} />
                 <button disabled={!filters.name.trim() && !filters.tags.length} onClick={search}>Search</button>
             </div>
+            {suggestions.length > 0 && <div className="tag-suggestions">{suggestions.map((tag) => <button key={tag.id} className="history-chip" onClick={() => setFilters((f) => ({ ...f, q: tag.name, name: tag.name }))}>{tag.label}</button>)}</div>}
             {history.length > 0 && <div className="search-history"><span className="muted">Recent:</span>{history.map((entry) => <button key={entry.at} className="history-chip" onClick={() => applyHistory(entry)}>{entry.label}</button>)}</div>}
-            {showOptions && <div className="search-options">
+            {(showOptions || advancedOpen) && <div className="search-options">
+                {advancedOpen && <div className="advanced-options">
+                    <label>Match type<select value={filters.matchType || 'contains'} onChange={(e) => setFilters((f) => ({ ...f, matchType: e.target.value }))}><option value="contains">Contains</option><option value="exact">Exact match</option><option value="starts">Starts with</option><option value="ends">Ends with</option></select></label>
+                    <label>Search scope<select value={filters.scope || 'both'} onChange={(e) => setFilters((f) => ({ ...f, scope: e.target.value }))}><option value="both">Name + Tags</option><option value="name">Name only</option><option value="tags">Tags only</option></select></label>
+                    <label>File type<select value={filters.itemType || 'all'} onChange={(e) => setFilters((f) => ({ ...f, itemType: e.target.value }))}><option value="all">All</option><option value="image">Images</option><option value="video">Videos</option><option value="folder">Folders</option><option value="file">Files</option></select></label>
+                    <label className="inline-check"><input type="checkbox" checked={!!filters.caseSensitive} onChange={(e) => setFilters((f) => ({ ...f, caseSensitive: e.target.checked }))} /> Case sensitive</label>
+                </div>}
                 <label className="inline-check"><input type="checkbox" checked={filters.tagSearchEnabled} onChange={(e) => setFilters((f) => ({ ...f, tagSearchEnabled: e.target.checked, tags: e.target.checked ? f.tags : [] }))} /> Enable tag search</label>
                 {filters.tagSearchEnabled && <>
                     <div className="mode-toggle">

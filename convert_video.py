@@ -2,7 +2,7 @@ import os
 import subprocess
 
 # 目标根目录
-ROOT_DIR = r"D:\Media"
+ROOT_DIR = r"D:\Media\others"
 
 # 常见视频扩展名
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".flv", ".wmv", ".webm"}
@@ -16,18 +16,32 @@ def reencode_video(input_path):
     dir_name, file_name = os.path.split(input_path)
     name, ext = os.path.splitext(file_name)
 
-    output_path = os.path.join(dir_name, f"{name}_reencoded.mp4")
+    output_path = os.path.join(dir_name, f"{file_name}.mp4")
 
     # ffmpeg 命令
     cmd = [
         r'D:\ffmpeg-6.1.1-essentials_build\bin\ffmpeg',
         "-y",  # 覆盖输出文件
         "-i", input_path,
-        "-r", "25",                # 帧率
-        "-b:v", "1M",              # 视频比特率
-        "-c:v", "h264_nvenc",         # 视频编码
-        "-preset", "medium",
-        "-c:a", "copy",
+        '-c:v',
+        'h264_nvenc',
+        '-preset',
+        'p4',
+
+        # fps
+        '-r',
+        '30',
+
+        # bitrate
+        '-b:v',
+        '3M',
+
+        '-maxrate',
+        '3M',
+
+        '-bufsize',
+        '6M',
+        "-c:a", 'aac',
         output_path
     ]
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, mediaUrl, thumbnailUrl } from '../api.js';
 import TagGroupList from './TagGroupList.jsx';
 
-export default function FullscreenViewer({ files, initialPath, tagsTree, tagSettings, onClose, onApplyTags, onRemoveTags }) {
+export default function FullscreenViewer({ files, initialPath, tagsTree, tagSettings, onClose, onApplyTags, onRemoveTags, onDeleteFile }) {
     const [currentPath, setCurrentPath] = useState(initialPath);
     const [fileTags, setFileTags] = useState([]);
     const [selectedTagIds, setSelectedTagIds] = useState([]);
@@ -44,6 +44,11 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
     const apply = async () => { await onApplyTags([file.path], selectedTagIds); await refreshTags(); };
     const remove = async () => { await onRemoveTags([file.path], selectedTagIds); await refreshTags(); };
     const removeMissing = async () => { await api.removeFile(file.path); onClose(); };
+    const deleteCurrent = async () => {
+        if (!confirm('Are you sure you want to delete this file?')) return;
+        await onDeleteFile?.(file);
+        onClose();
+    };
     const searchByTag = (tag) => {
         window.open(`/search?${new URLSearchParams({ tags: tag.id, tagMode: 'and', page: 1, pageSize: 50 })}`, '_blank', 'noopener,noreferrer');
     };
@@ -256,6 +261,7 @@ const onTouchEnd = () => {
     return (
         <div className={`viewer ${showMetadata ? 'metadata-open' : 'metadata-hidden'}`} role="dialog" aria-modal="true">
             <button className="viewer-close" onClick={onClose}>✕</button>
+            <button className="viewer-delete" onClick={deleteCurrent}>Delete</button>
             <button className="viewer-meta-toggle" onClick={() => setShowMetadata((x) => !x)}>{showMetadata ? 'Hide info' : 'Show info'}</button>
             <section className="viewer-content" onDoubleClick={onDoubleClick} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
                 {missing ? <div className="missing-file"><h2>File not found</h2><button onClick={removeMissing}>Remove from database</button></div> : file.type === 'image' ? <img className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} src={mediaUrl(file.path)} alt={file.name} onError={() => setMissing(true)} /> : <video className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} controls autoPlay={false} playsInline src={mediaUrl(file.path)} onError={() => setMissing(true)} />}

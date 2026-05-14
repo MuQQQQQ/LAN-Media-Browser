@@ -10,6 +10,7 @@ import { tagsRouter } from './routes/tags.js';
 import { searchRouter } from './routes/search.js';
 import { thumbnailRouter } from './routes/thumbnail.js';
 import { filesRouter } from './routes/files.js';
+import { favoritesRouter } from './routes/favorites.js';
 
 const app = express();
 app.use(cors());
@@ -21,6 +22,7 @@ app.use('/api/tags', tagsRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/thumbnail', thumbnailRouter);
 app.use('/api/files', filesRouter);
+app.use('/api/favorites', favoritesRouter);
 app.use('/media', mediaRouter);
 
 if (fs.existsSync(config.clientDist)) {
