@@ -3,9 +3,22 @@ import fs from 'fs';
 import path from 'path';
 import { config } from '../config.js';
 import { db, decorateItems, deleteFileRecord } from '../db.js';
-import { getMediaType } from '../mediaTypes.js';
+import { getMediaType, imageExtensions, videoExtensions } from '../mediaTypes.js';
 
 export const searchRouter = express.Router();
+
+const sortColumns = {
+    name: 'COALESCE(f.name, f.path) COLLATE NOCASE',
+    createdAt: 'f.created_at',
+    modifiedAt: 'f.modified_at',
+    size: 'f.size'
+};
+
+function mediaTypeWhere(itemType) {
+    const extensions = itemType === 'image' ? imageExtensions : itemType === 'video' ? videoExtensions : null;
+    if (!extensions) return null;
+    return `(${[...extensions].map((ext) => `LOWER(f.path) LIKE '%${ext.replace('.', '\\.')}'`).join(' OR ')})`.replace(/\\\./g, '.');
+}
 
 searchRouter.get('/', (req, res, next) => {
     try {
@@ -20,6 +33,12 @@ searchRouter.get('/', (req, res, next) => {
         const itemType = ['file', 'folder', 'image', 'video'].includes(String(req.query.itemType)) ? String(req.query.itemType) : 'all';
         const tagMode = String(req.query.tagMode || 'and').toLowerCase() === 'or' ? 'or' : 'and';
         const tagIds = String(req.query.tags || '').split(',').map((x) => Number(x)).filter(Boolean);
+        const pathFilter = String(req.query.pathFilter || '').trim();
+        const dateFrom = String(req.query.dateFrom || '').trim();
+        const dateTo = String(req.query.dateTo || '').trim();
+        const sortBy = Object.hasOwn(sortColumns, String(req.query.sortBy)) ? String(req.query.sortBy) : 'name';
+        const sortDir = String(req.query.sortDir || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+        const orderBy = `${sortColumns[sortBy]} ${sortDir}, COALESCE(f.name, f.path) COLLATE NOCASE ASC`;
 
         const where = [];
         const params = [];
@@ -39,12 +58,25 @@ searchRouter.get('/', (req, res, next) => {
             }
             where.push(`(${queryClauses.join(' OR ')})`);
         }
+        if (pathFilter) {
+            where.push('LOWER(f.path) LIKE ?');
+            params.push(`%${pathFilter.toLowerCase()}%`);
+        }
+        if (dateFrom) {
+            where.push("COALESCE(f.modified_at, f.created_at) >= ?");
+            params.push(new Date(dateFrom).toISOString());
+        }
+        if (dateTo) {
+            where.push("COALESCE(f.modified_at, f.created_at) <= ?");
+            params.push(new Date(`${dateTo}T23:59:59`).toISOString());
+        }
         if (itemType === 'folder') {
             where.push("f.item_type = 'folder'");
         } else if (itemType === 'file') {
             where.push("f.item_type = 'file'");
         } else if (itemType === 'image' || itemType === 'video') {
             where.push("f.item_type = 'file'");
+            where.push(mediaTypeWhere(itemType));
         }
 
         let sql;
@@ -53,14 +85,14 @@ searchRouter.get('/', (req, res, next) => {
             const placeholders = tagIds.map(() => '?').join(',');
             const baseWhere = where.length ? `WHERE ${where.join(' AND ')}` : '';
             sql = `
-                SELECT f.id, f.path, f.item_type AS itemType
+                SELECT f.id, f.path, f.name, f.item_type AS itemType, f.created_at AS createdAt, f.modified_at AS modifiedAt, f.size
                 FROM files f
                 JOIN file_tags ft ON ft.file_id = f.id
                 JOIN tags t ON t.id = ft.tag_id
                 ${baseWhere ? baseWhere + ' AND' : 'WHERE'} ft.tag_id IN (${placeholders})
                 GROUP BY f.id
                 HAVING COUNT(DISTINCT ft.tag_id) = ?
-                ORDER BY f.path COLLATE NOCASE
+                ORDER BY ${orderBy}
                 LIMIT ? OFFSET ?
             `;
             countSql = `SELECT COUNT(*) AS total FROM (${sql.replace(/LIMIT \? OFFSET \?/i, '')}) q`;
@@ -71,12 +103,12 @@ searchRouter.get('/', (req, res, next) => {
             params.push(...tagIds);
             const baseWhere = `WHERE ${where.join(' AND ')}`;
             sql = `
-                SELECT DISTINCT f.id, f.path, f.item_type AS itemType
+                SELECT DISTINCT f.id, f.path, f.name, f.item_type AS itemType, f.created_at AS createdAt, f.modified_at AS modifiedAt, f.size
                 FROM files f
                 JOIN file_tags ft ON ft.file_id = f.id
                 JOIN tags t ON t.id = ft.tag_id
                 ${baseWhere}
-                ORDER BY f.path COLLATE NOCASE
+                ORDER BY ${orderBy}
                 LIMIT ? OFFSET ?
             `;
             countSql = `
@@ -88,7 +120,7 @@ searchRouter.get('/', (req, res, next) => {
             `;
         } else {
             const baseWhere = where.length ? `WHERE ${where.join(' AND ')}` : '';
-            sql = `SELECT f.id, f.path, f.item_type AS itemType FROM files f ${baseWhere} ORDER BY f.path COLLATE NOCASE LIMIT ? OFFSET ?`;
+            sql = `SELECT f.id, f.path, f.name, f.item_type AS itemType, f.created_at AS createdAt, f.modified_at AS modifiedAt, f.size FROM files f ${baseWhere} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
             countSql = `SELECT COUNT(*) AS total FROM files f ${baseWhere}`;
         }
 
@@ -102,15 +134,17 @@ searchRouter.get('/', (req, res, next) => {
                 continue;
             }
             const mediaType = getMediaType(path.posix.extname(file.path)) || 'file';
-            if ((itemType === 'image' || itemType === 'video') && mediaType !== itemType) continue;
             files.push({
                 id: file.id,
                 path: file.path,
-                name: path.posix.basename(file.path),
-                type: file.itemType === 'folder' ? 'folder' : mediaType
+                name: file.name || path.posix.basename(file.path),
+                type: file.itemType === 'folder' ? 'folder' : mediaType,
+                createdAt: file.createdAt,
+                modifiedAt: file.modifiedAt,
+                size: file.itemType === 'folder' ? null : file.size
             });
         }
-        res.json({ page, pageSize, total, files: decorateItems(files), filters: { q: query, name: query, matchType, scope, tagMode, tags: tagIds, caseSensitive, itemType } });
+        res.json({ page, pageSize, total, files: decorateItems(files), filters: { q: query, name: query, matchType, scope, tagMode, tags: tagIds, caseSensitive, itemType, pathFilter, dateFrom, dateTo, sortBy, sortDir: sortDir.toLowerCase() } });
     } catch (error) {
         next(error);
     }

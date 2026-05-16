@@ -83,7 +83,7 @@ thumbnailRouter.get('/video', async (req, res, next) => {
                 if (await exists(output)) return;
                 await new Promise((resolve, reject) => {
                     ffmpeg(absolutePath)
-                        .inputOptions(['-ss 00:00:01'])
+                        .inputOptions(['-ss 00:00:03'])
                         .outputOptions(['-frames:v 1', '-q:v 2'])
                         .output(output)
                         .on('end', resolve)

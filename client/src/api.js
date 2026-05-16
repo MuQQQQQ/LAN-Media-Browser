@@ -15,13 +15,15 @@ async function request(path, options) {
 }
 
 export const api = {
-    browse: ({ path = '', page = 1, pageSize = 50 }) => request(`/api/browse?path=${encodeURIComponent(path)}&page=${page}&pageSize=${pageSize}`),
+    browse: ({ path = '', page = 1, pageSize = 50, sortBy = 'name', sortDir = 'asc' }) => request(`/api/browse?path=${encodeURIComponent(path)}&page=${page}&pageSize=${pageSize}&sortBy=${encodeURIComponent(sortBy)}&sortDir=${encodeURIComponent(sortDir)}`),
     tags: (sort = 'alphabetical') => request(`/api/tags?sort=${encodeURIComponent(sort)}`),
     createTag: (payload) => request('/api/tags', { method: 'POST', body: JSON.stringify(payload) }),
     updateTag: (id, payload) => request(`/api/tags/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
     deleteTag: (id) => request(`/api/tags/${id}`, { method: 'DELETE' }),
     removeFile: (path, type = 'file') => request(`/api/files?path=${encodeURIComponent(path)}&type=${encodeURIComponent(type)}`, { method: 'DELETE' }),
     deleteItems: (items) => request('/api/files/delete', { method: 'POST', body: JSON.stringify({ items }) }),
+    moveItems: (payload) => request('/api/files/move', { method: 'POST', body: JSON.stringify(payload) }),
+    copyItems: (payload) => request('/api/files/copy', { method: 'POST', body: JSON.stringify(payload) }),
     orphanRecords: () => request('/api/files/orphans'),
     cleanupOrphans: () => request('/api/files/orphans/cleanup', { method: 'POST', body: JSON.stringify({}) }),
     fileTags: (path, type = 'file') => request(`/api/tags/file?path=${encodeURIComponent(path)}&type=${encodeURIComponent(type)}`),
@@ -31,8 +33,8 @@ export const api = {
     favorites: ({ sort = 'time', type = 'all' } = {}) => request(`/api/favorites?sort=${encodeURIComponent(sort)}&type=${encodeURIComponent(type)}`),
     addFavorite: (item) => request('/api/favorites', { method: 'POST', body: JSON.stringify(item) }),
     removeFavorite: (item) => request(`/api/favorites?path=${encodeURIComponent(item.path)}&type=${encodeURIComponent(item.type === 'folder' ? 'folder' : 'file')}`, { method: 'DELETE' }),
-    search: ({ tags = [], tagMode = 'and', q = '', name = '', matchType = 'contains', scope = 'both', caseSensitive = false, itemType = 'all', page = 1, pageSize = 50 }) => {
-        const params = new URLSearchParams({ tagMode, q: q || name, matchType, scope, caseSensitive, itemType, page, pageSize });
+    search: ({ tags = [], tagMode = 'and', q = '', name = '', matchType = 'contains', scope = 'both', caseSensitive = false, itemType = 'all', pathFilter = '', dateFrom = '', dateTo = '', page = 1, pageSize = 50, sortBy = 'name', sortDir = 'asc' }) => {
+        const params = new URLSearchParams({ tagMode, q: q || name, matchType, scope, caseSensitive, itemType, pathFilter, dateFrom, dateTo, page, pageSize, sortBy, sortDir });
         if (tags.length) params.set('tags', tags.join(','));
         return request(`/api/search?${params}`);
     }

@@ -14,7 +14,11 @@ CREATE TABLE IF NOT EXISTS files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     path TEXT NOT NULL UNIQUE,
     name TEXT NULL,
-    item_type TEXT NOT NULL DEFAULT 'file'
+    item_type TEXT NOT NULL DEFAULT 'file',
+    created_at TEXT NULL,
+    modified_at TEXT NULL,
+    size INTEGER NULL,
+    metadata_cached_at TEXT NULL
 );
 
 CREATE TABLE IF NOT EXISTS tags (
@@ -63,7 +67,11 @@ for (const statement of [
     "ALTER TABLE tags ADD COLUMN last_used_at TEXT NULL",
     "ALTER TABLE tags ADD COLUMN color TEXT NOT NULL DEFAULT '#64748b'",
     "ALTER TABLE files ADD COLUMN name TEXT NULL",
-    "ALTER TABLE files ADD COLUMN item_type TEXT NOT NULL DEFAULT 'file'"
+    "ALTER TABLE files ADD COLUMN item_type TEXT NOT NULL DEFAULT 'file'",
+    "ALTER TABLE files ADD COLUMN created_at TEXT NULL",
+    "ALTER TABLE files ADD COLUMN modified_at TEXT NULL",
+    "ALTER TABLE files ADD COLUMN size INTEGER NULL",
+    "ALTER TABLE files ADD COLUMN metadata_cached_at TEXT NULL"
 ]) {
     try { db.exec(statement); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 }
@@ -71,6 +79,9 @@ for (const statement of [
 for (const statement of [
     'CREATE INDEX IF NOT EXISTS idx_files_item_type ON files(item_type)',
     'CREATE INDEX IF NOT EXISTS idx_files_name ON files(name)',
+    'CREATE INDEX IF NOT EXISTS idx_files_created_at ON files(created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_files_modified_at ON files(modified_at)',
+    'CREATE INDEX IF NOT EXISTS idx_files_size ON files(size)',
     'CREATE INDEX IF NOT EXISTS idx_favorites_item_id ON favorites(item_id)'
 ]) {
     db.exec(statement);
@@ -86,7 +97,12 @@ for (const file of db.prepare("SELECT id, path FROM files WHERE name IS NULL OR 
 }
 
 const insertFile = db.prepare('INSERT OR IGNORE INTO files(path, name, item_type) VALUES (?, ?, ?)');
-const getFile = db.prepare('SELECT id, path, item_type AS itemType FROM files WHERE path = ?');
+const getFile = db.prepare('SELECT id, path, name, item_type AS itemType, created_at AS createdAt, modified_at AS modifiedAt, size, metadata_cached_at AS metadataCachedAt FROM files WHERE path = ?');
+const updateFileMetadata = db.prepare(`
+    UPDATE files
+    SET name = ?, item_type = ?, created_at = ?, modified_at = ?, size = ?, metadata_cached_at = CURRENT_TIMESTAMP
+    WHERE path = ?
+`);
 
 export function ensureItem(relativePath, itemType = 'file') {
     const normalizedType = itemType === 'folder' ? 'folder' : 'file';
@@ -101,6 +117,20 @@ export function ensureFile(relativePath) {
 
 export function ensureFolder(relativePath) {
     return ensureItem(relativePath, 'folder');
+}
+
+export function ensureItemMetadata(relativePath, itemType = 'file', metadata = {}) {
+    const normalizedType = itemType === 'folder' ? 'folder' : 'file';
+    ensureItem(relativePath, normalizedType);
+    updateFileMetadata.run(
+        basename(relativePath),
+        normalizedType,
+        metadata.createdAt || null,
+        metadata.modifiedAt || null,
+        normalizedType === 'folder' ? null : Number.isFinite(metadata.size) ? metadata.size : null,
+        relativePath
+    );
+    return getFile.get(relativePath);
 }
 
 export function deleteFileRecord(relativePath) {
@@ -130,8 +160,51 @@ export function deleteItemRecordsByPathPrefix(relativePath) {
     return rows.length;
 }
 
+export function updateItemPath(oldPath, newPath) {
+    const oldPrefix = oldPath ? `${oldPath}/%` : '%';
+    const rows = oldPath
+        ? db.prepare('SELECT id, path FROM files WHERE path = ? OR path LIKE ? ORDER BY LENGTH(path)').all(oldPath, oldPrefix)
+        : [];
+    if (!rows.length) return 0;
+    const tx = db.transaction(() => {
+        for (const row of rows) {
+            const suffix = row.path === oldPath ? '' : row.path.slice(oldPath.length + 1);
+            const nextPath = suffix ? `${newPath}/${suffix}` : newPath;
+            db.prepare('UPDATE files SET path = ?, name = ? WHERE id = ?').run(nextPath, basename(nextPath), row.id);
+            db.prepare('UPDATE favorites SET path = ? WHERE item_id = ?').run(nextPath, row.id);
+        }
+        db.prepare('UPDATE folder_previews SET folder_path = REPLACE(folder_path, ?, ?) WHERE folder_path = ? OR folder_path LIKE ?').run(oldPath, newPath, oldPath, oldPrefix);
+        db.prepare('UPDATE folder_previews SET file_path = REPLACE(file_path, ?, ?) WHERE file_path = ? OR file_path LIKE ?').run(oldPath, newPath, oldPath, oldPrefix);
+    });
+    tx();
+    return rows.length;
+}
+
+export function copyItemRecordWithTags(sourcePath, targetPath, itemType = 'file') {
+    const sourcePrefix = sourcePath ? `${sourcePath}/%` : '%';
+    const sourceRows = sourcePath
+        ? db.prepare('SELECT id, path, item_type AS itemType, created_at AS createdAt, modified_at AS modifiedAt, size FROM files WHERE path = ? OR path LIKE ? ORDER BY LENGTH(path)').all(sourcePath, sourcePrefix)
+        : [];
+    if (!sourceRows.length) {
+        ensureItem(targetPath, itemType);
+        return 1;
+    }
+    const insertTag = db.prepare('INSERT OR IGNORE INTO file_tags(file_id, tag_id) VALUES (?, ?)');
+    const tagRows = db.prepare('SELECT tag_id AS tagId FROM file_tags WHERE file_id = ?');
+    const tx = db.transaction(() => {
+        for (const source of sourceRows) {
+            const suffix = source.path === sourcePath ? '' : source.path.slice(sourcePath.length + 1);
+            const nextPath = suffix ? `${targetPath}/${suffix}` : targetPath;
+            const copied = ensureItemMetadata(nextPath, source.itemType, { createdAt: source.createdAt, modifiedAt: source.modifiedAt, size: source.size });
+            for (const tag of tagRows.all(source.id)) insertTag.run(copied.id, tag.tagId);
+        }
+    });
+    tx();
+    return sourceRows.length;
+}
+
 export function listTrackedItems() {
-    return db.prepare('SELECT id, path, item_type AS itemType FROM files ORDER BY path COLLATE NOCASE').all();
+    return db.prepare('SELECT id, path, name, item_type AS itemType, created_at AS createdAt, modified_at AS modifiedAt, size FROM files ORDER BY path COLLATE NOCASE').all();
 }
 
 export function getTagsTree(sort = 'alphabetical') {

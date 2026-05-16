@@ -12,11 +12,82 @@ import FavoritesPage from './components/FavoritesPage.jsx';
 import Toast from './components/Toast.jsx';
 import { loadTagSettings, saveTagSettings } from './tagSettings.js';
 
-const defaultFilters = { q: '', name: '', tags: [], tagMode: 'and', matchType: 'contains', scope: 'both', caseSensitive: false, itemType: 'all', tagSearchEnabled: false };
+const defaultFilters = { q: '', name: '', tags: [], tagMode: 'and', matchType: 'contains', scope: 'both', caseSensitive: false, itemType: 'all', pathFilter: '', dateFrom: '', dateTo: '', tagSearchEnabled: false };
 
 function updateUrl(params) {
     const next = new URLSearchParams(params);
     window.history.replaceState(null, '', `${window.location.pathname}?${next}`);
+}
+
+const MISSING_ITEMS_PREVIEW_LIMIT = 200;
+
+function MissingItemsDialog({ open, items, totalCount, busy, onClose, onDeleteAll, onDeleteSelected, onCopyAll, onExportList }) {
+    const [selectedPaths, setSelectedPaths] = useState(new Set());
+
+    useEffect(() => {
+        if (open) setSelectedPaths(new Set(items.map((item) => item.path)));
+    }, [open, items]);
+
+    if (!open) return null;
+
+    const shownCount = items.length;
+    const isTruncated = totalCount > shownCount;
+    const selectedItems = items.filter((item) => selectedPaths.has(item.path));
+    const allShownSelected = shownCount > 0 && selectedPaths.size === shownCount;
+    const togglePath = (path) => setSelectedPaths((current) => {
+        const next = new Set(current);
+        next.has(path) ? next.delete(path) : next.add(path);
+        return next;
+    });
+    const toggleAllShown = () => setSelectedPaths(allShownSelected ? new Set() : new Set(items.map((item) => item.path)));
+
+    return (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="missing-items-title">
+            <section className="modal missing-items-modal">
+                <header>
+                    <div>
+                        <h2 id="missing-items-title">Missing Items Detected</h2>
+                        <p className="muted">These items exist in the database but are missing locally.</p>
+                    </div>
+                    <button className="secondary" onClick={onClose} disabled={busy} aria-label="Close missing items dialog">✕</button>
+                </header>
+
+                <div className="missing-items-summary">
+                    <strong>{totalCount} missing item(s)</strong>
+                    <span>{selectedPaths.size} selected from {shownCount} shown</span>
+                    {isTruncated && <span className="warning-text">Showing first {MISSING_ITEMS_PREVIEW_LIMIT} items for performance.</span>}
+                </div>
+
+                <div className="missing-items-tools">
+                    <label className="inline-check">
+                        <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown} disabled={!shownCount || busy} />
+                        Select all shown
+                    </label>
+                    <button className="secondary" onClick={onCopyAll} disabled={!shownCount || busy}>Copy all paths</button>
+                    <button className="secondary" onClick={onExportList} disabled={!shownCount || busy}>Export list</button>
+                </div>
+
+                <div className="missing-items-list" role="list" aria-label="Missing item paths">
+                    {items.map((item) => {
+                        const type = item.itemType === 'folder' || item.type === 'folder' ? 'folder' : 'file';
+                        return (
+                            <label className="missing-item-row" key={item.path} title={item.path} role="listitem">
+                                <input type="checkbox" checked={selectedPaths.has(item.path)} onChange={() => togglePath(item.path)} disabled={busy} />
+                                <span className="missing-item-type" aria-label={type}>{type === 'folder' ? '📁' : '📄'}</span>
+                                <code>{item.path}</code>
+                            </label>
+                        );
+                    })}
+                </div>
+
+                <div className="actions missing-items-actions">
+                    <button className="danger" onClick={() => onDeleteAll()} disabled={busy || !totalCount}>Delete All</button>
+                    <button className="danger" onClick={() => onDeleteSelected(selectedItems)} disabled={busy || !selectedItems.length}>Delete selected ({selectedItems.length})</button>
+                    <button className="secondary" onClick={onClose} disabled={busy}>Cancel</button>
+                </div>
+            </section>
+        </div>
+    );
 }
 
 export default function App() {
@@ -24,6 +95,8 @@ export default function App() {
     const [currentPath, setCurrentPath] = useState(url.get('path') || '');
     const [page, setPage] = useState(Number(url.get('page') || 1));
     const [pageSize, setPageSize] = useState(Number(url.get('pageSize') || 50));
+    const [sortBy, setSortBy] = useState(url.get('sortBy') || 'name');
+    const [sortDir, setSortDir] = useState(url.get('sortDir') || 'asc');
     const [items, setItems] = useState([]);
     const [total, setTotal] = useState(0);
     const [selected, setSelected] = useState(new Set());
@@ -39,6 +112,11 @@ export default function App() {
     const [error, setError] = useState('');
     const [toast, setToast] = useState('');
     const [tagAnalysis, setTagAnalysis] = useState({ common: [], partial: [] });
+    const [missingItems, setMissingItems] = useState([]);
+    const [missingItemsTotal, setMissingItemsTotal] = useState(0);
+    const [missingDialogOpen, setMissingDialogOpen] = useState(false);
+    const [missingDialogBusy, setMissingDialogBusy] = useState(false);
+    const [clipboard, setClipboard] = useState(null);
 
     const selectedPaths = useMemo(() => Array.from(selected), [selected]);
 
@@ -52,16 +130,22 @@ export default function App() {
         try {
             if (isSearchPage) {
                 const searchTags = (url.get('tags') || '').split(',').map(Number).filter(Boolean);
-                const searchFilters = { tags: searchTags, tagMode: url.get('tagMode') || 'and', q: url.get('q') || url.get('name') || '', name: url.get('q') || url.get('name') || '', matchType: url.get('matchType') || 'contains', scope: url.get('scope') || 'both', caseSensitive: url.get('caseSensitive') === 'true', itemType: url.get('itemType') || 'all' };
+                const searchFilters = { tags: searchTags, tagMode: url.get('tagMode') || 'and', q: url.get('q') || url.get('name') || '', name: url.get('q') || url.get('name') || '', matchType: url.get('matchType') || 'contains', scope: url.get('scope') || 'both', caseSensitive: url.get('caseSensitive') === 'true', itemType: url.get('itemType') || 'all', pathFilter: url.get('pathFilter') || '', dateFrom: url.get('dateFrom') || '', dateTo: url.get('dateTo') || '' };
                 setFilters((current) => ({ ...current, ...searchFilters, tagSearchEnabled: searchTags.length > 0 }));
-                const data = await api.search({ ...searchFilters, page, pageSize });
+                const data = await api.search({ ...searchFilters, page, pageSize, sortBy, sortDir });
                 setItems(data.files);
                 setTotal(data.total);
+                const nextParams = new URLSearchParams(window.location.search);
+                nextParams.set('page', page);
+                nextParams.set('pageSize', pageSize);
+                nextParams.set('sortBy', sortBy);
+                nextParams.set('sortDir', sortDir);
+                updateUrl(nextParams);
             } else {
-                const data = await api.browse({ path: currentPath, page, pageSize });
+                const data = await api.browse({ path: currentPath, page, pageSize, sortBy, sortDir });
                 setItems(data.items);
                 setTotal(data.total);
-                updateUrl({ path: currentPath, page, pageSize });
+                updateUrl({ path: currentPath, page, pageSize, sortBy, sortDir });
             }
         } catch (err) {
             setError(err.message);
@@ -69,27 +153,18 @@ export default function App() {
     }
 
     useEffect(() => { loadTags().catch((err) => setError(err.message)); }, [tagSettings.sortMode]);
-    useEffect(() => { if (!isTagsPage && !isFavoritesPage) load(); }, [currentPath, page, pageSize, isSearchPage, isTagsPage, isFavoritesPage]);
+    useEffect(() => { if (!isTagsPage && !isFavoritesPage) load(); }, [currentPath, page, pageSize, sortBy, sortDir, isSearchPage, isTagsPage, isFavoritesPage]);
     useEffect(() => {
         if (isTagsPage) return;
 
         api.orphanRecords()
-            .then(async (data) => {
+            .then((data) => {
                 console.log('Orphan records:', data.items);
 
                 if (data.count > 0) {
-                    // 假设 data.items 是一个数组，每个 item 有 path 字段
-                    const paths = data.items
-                        .map(item => item.path)   // 根据你的数据结构调整
-                        .join('\n');
-
-                    const message = `${data.count} item(s) exist in the database but are missing locally:\n\n${paths}\n\nRemove these invalid records?`;
-
-                    if (confirm(message)) {
-                        const cleanup = await api.cleanupOrphans();
-                        setToast(`Removed ${cleanup.removed} invalid database record(s)`);
-                        await load().catch(() => {});
-                    }
+                    setMissingItems(Array.isArray(data.items) ? data.items : []);
+                    setMissingItemsTotal(data.count);
+                    setMissingDialogOpen(true);
                 }
             })
             .catch(() => {});
@@ -118,7 +193,9 @@ export default function App() {
         window.location.href = `/?${new URLSearchParams({
             path,
             page: 1,
-            pageSize
+            pageSize,
+            sortBy,
+            sortDir
         })}`;
         // window.open(`/?${new URLSearchParams({ path, page: 1, pageSize })}`, '_blank', 'noopener,noreferrer');
     };
@@ -128,12 +205,15 @@ export default function App() {
         return next;
     });
     const runSearch = () => {
-        const params = new URLSearchParams({ tagMode: filters.tagMode, page: 1, pageSize });
+        const params = new URLSearchParams({ tagMode: filters.tagMode, page: 1, pageSize, sortBy, sortDir });
         params.set('q', filters.q || filters.name || '');
         params.set('matchType', filters.matchType);
         params.set('scope', filters.scope);
         params.set('caseSensitive', filters.caseSensitive);
         params.set('itemType', filters.itemType);
+        if (filters.pathFilter) params.set('pathFilter', filters.pathFilter);
+        if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+        if (filters.dateTo) params.set('dateTo', filters.dateTo);
         if (filters.tagSearchEnabled && filters.tags.length) params.set('tags', filters.tags.join(','));
         window.open(`/search?${params}`, '_blank');
     };
@@ -194,6 +274,8 @@ export default function App() {
 
     const selectAll = () => setSelected(new Set(items.map((item) => item.path)));
     const deselectAll = () => setSelected(new Set());
+    const selectedItemsForOps = () => items.filter((item) => selected.has(item.path));
+    const normalizeOpItems = (targetItems) => targetItems.map((item) => ({ path: item.path, type: item.type === 'folder' ? 'folder' : 'file' }));
     const deleteItems = async (targetItems) => {
         if (!targetItems.length) return;
         const label = targetItems.length === 1 ? 'selected item' : `${targetItems.length} selected item(s)`;
@@ -208,6 +290,118 @@ export default function App() {
     };
     const deleteSingleItem = (item) => deleteItems([item]);
     const deleteSelected = () => deleteItems(items.filter((item) => selected.has(item.path)));
+
+    const moveItems = async (targetItems) => {
+        if (!targetItems.length) return;
+        const targetFolder = window.prompt('Move to folder path (relative to base)', currentPath);
+        if (targetFolder === null) return;
+        const createFolder = window.prompt('Optional new folder name to create inside target', '') || '';
+        await api.moveItems({ items: normalizeOpItems(targetItems), targetFolder, createFolder });
+        setSelected(new Set());
+        setToast(`Moved ${targetItems.length} item(s)`);
+        await load().catch(() => {});
+    };
+    const renameItem = async (item) => {
+        const renameTo = window.prompt('Rename item', item.name);
+        if (!renameTo || renameTo === item.name) return;
+        const parent = item.path.split('/').slice(0, -1).join('/');
+        await api.moveItems({ items: normalizeOpItems([item]), targetFolder: parent, renameTo });
+        setToast('Renamed successfully');
+        await load().catch(() => {});
+    };
+    const copyItemsToClipboard = (targetItems) => {
+        setClipboard({ mode: 'copy', items: normalizeOpItems(targetItems), at: Date.now() });
+        setToast(`Copied ${targetItems.length} item(s). Paste within 10 minutes.`);
+    };
+    const cutItemsToClipboard = (targetItems) => {
+        setClipboard({ mode: 'cut', items: normalizeOpItems(targetItems), at: Date.now() });
+        setToast(`Cut ${targetItems.length} item(s). Paste within 10 minutes.`);
+    };
+    const pasteItems = async (targetFolder = currentPath) => {
+        if (!clipboard?.items?.length) return;
+        if (Date.now() - clipboard.at > 10 * 60 * 1000) {
+            setClipboard(null);
+            setToast('Clipboard expired');
+            return;
+        }
+        if (clipboard.mode === 'copy') await api.copyItems({ items: clipboard.items, targetFolder });
+        else await api.moveItems({ items: clipboard.items, targetFolder });
+        setToast(`${clipboard.mode === 'copy' ? 'Copied' : 'Moved'} ${clipboard.items.length} item(s)`);
+        if (clipboard.mode === 'cut') setClipboard(null);
+        setSelected(new Set());
+        await load().catch(() => {});
+    };
+    const tagItems = (targetItems) => {
+        setSelected(new Set(targetItems.map((item) => item.path)));
+        setApplyModalOpen(true);
+    };
+
+    useEffect(() => {
+        const handler = (event) => {
+            const target = event.target;
+            if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return;
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); selectAll(); }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') { event.preventDefault(); copyItemsToClipboard(selectedItemsForOps()); }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') { event.preventDefault(); cutItemsToClipboard(selectedItemsForOps()); }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') { event.preventDefault(); pasteItems(); }
+            if (event.key === 'Delete') { event.preventDefault(); deleteSelected(); }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [items, selected, clipboard, currentPath]);
+
+    const closeMissingDialog = () => {
+        if (missingDialogBusy) return;
+        setMissingDialogOpen(false);
+    };
+    const deleteAllMissingItems = async () => {
+        setMissingDialogBusy(true);
+        try {
+            const cleanup = await api.cleanupOrphans();
+            setToast(`Removed ${cleanup.removed} invalid database record(s)`);
+            setMissingDialogOpen(false);
+            setMissingItems([]);
+            setMissingItemsTotal(0);
+            await load().catch(() => {});
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setMissingDialogBusy(false);
+        }
+    };
+    const deleteSelectedMissingItems = async (targetItems) => {
+        if (!targetItems.length) return;
+        setMissingDialogBusy(true);
+        try {
+            const payload = targetItems.map((item) => ({ path: item.path, type: item.itemType === 'folder' || item.type === 'folder' ? 'folder' : 'file' }));
+            const result = await api.deleteItems(payload);
+            const removed = result.results?.reduce((count, item) => count + (item.removedRecords || (item.status === 'deleted' || item.status === 'db-only' ? 1 : 0)), 0) ?? result.deleted ?? 0;
+            setToast(`Removed ${removed} invalid database record(s)`);
+            setMissingItems((current) => current.filter((item) => !targetItems.some((target) => target.path === item.path)));
+            setMissingItemsTotal((current) => Math.max(0, current - targetItems.length));
+            if (targetItems.length >= missingItems.length && missingItemsTotal <= missingItems.length) setMissingDialogOpen(false);
+            await load().catch(() => {});
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setMissingDialogBusy(false);
+        }
+    };
+    const copyMissingPaths = async () => {
+        const paths = missingItems.map((item) => item.path).join('\n');
+        await navigator.clipboard.writeText(paths);
+        setToast('Missing item paths copied');
+    };
+    const exportMissingPaths = () => {
+        const content = missingItems.map((item) => `${item.itemType === 'folder' || item.type === 'folder' ? 'folder' : 'file'}\t${item.path}`).join('\n');
+        const blob = new Blob([`type\tpath\n${content}\n`], { type: 'text/tab-separated-values;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'missing-items.tsv';
+        link.click();
+        URL.revokeObjectURL(url);
+    };
 
     if (isTagsPage) {
         return <TagsPage tagsTree={tagsTree} tagSettings={tagSettings} setTagSettings={setTagSettings} onCreateTag={createTag} onUpdateTag={updateTag} onDeleteTag={deleteTag} />;
@@ -224,7 +418,7 @@ export default function App() {
                     <h1>LAN Media Browser</h1>
                     <p>Explorer + tags + search for local images/videos</p>
                 </div>
-                <div className="header-actions"><a className="button-link" href="/favorites">Favorites ★</a><a className="button-link" href="/tags">Manage Tags</a><button onClick={() => setCreateModalOpen(true)}>Create Tag</button></div>
+                <div className="header-actions"><a className="button-link" href={`/search?${new URLSearchParams({ itemType: 'image', page: 1, pageSize, sortBy, sortDir })}`}>All Images</a><a className="button-link" href={`/search?${new URLSearchParams({ itemType: 'video', page: 1, pageSize, sortBy, sortDir })}`}>All Videos</a><a className="button-link" href="/favorites">Favorites ★</a><a className="button-link" href="/tags">Manage Tags</a><button onClick={() => setCreateModalOpen(true)}>Create Tag</button></div>
             </header>
             <SearchPanel tagsTree={tagsTree} filters={filters} setFilters={setFilters} onSearch={runSearch} onClear={clearFilters} />
             {isSearchPage ? (
@@ -241,13 +435,17 @@ export default function App() {
             {error && <div className="error">{error}</div>}
             <div className="toolbar">
                 <label>Page size <input type="number" min="1" max="200" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} /></label>
-                {!!selected.size && <><button className="secondary" onClick={selectAll}>Select All</button><button className="secondary" onClick={deselectAll}>Deselect All</button><button className="danger" onClick={deleteSelected}>Delete selected</button></>}
+                <label>Sort by <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1); }}><option value="name">Name</option><option value="createdAt">Created time</option><option value="modifiedAt">Modified time</option><option value="size">File size</option></select></label>
+                <label>Direction <select value={sortDir} onChange={(e) => { setSortDir(e.target.value); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+                {!!selected.size && <><button className="secondary" onClick={selectAll}>Select All</button><button className="secondary" onClick={deselectAll}>Deselect All</button><button className="secondary" onClick={() => moveItems(selectedItemsForOps())}>Move selected</button><button className="secondary" onClick={() => copyItemsToClipboard(selectedItemsForOps())}>Copy</button><button className="secondary" onClick={() => cutItemsToClipboard(selectedItemsForOps())}>Cut</button><button className="danger" onClick={deleteSelected}>Delete selected</button></>}
+                {clipboard?.items?.length > 0 && <button className="secondary" onClick={() => pasteItems()}>Paste here ({clipboard.mode})</button>}
                 <button className="toolbar-push" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>Tag selected files ({selected.size})</button>
             </div>
-            <FileGrid items={items} selectedPaths={selected} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => {setViewerPath(file.path);window.history.pushState({ viewing: true }, '');}} onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} pageSize={pageSize} />
+            <FileGrid items={items} selectedPaths={selected} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => {setViewerPath(file.path);window.history.pushState({ viewing: true }, '');}} onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} onRenameItem={renameItem} onMoveItems={moveItems} onCopyItems={copyItemsToClipboard} onCutItems={cutItemsToClipboard} onPasteItems={pasteItems} onTagItems={tagItems} pageSize={pageSize} />
             <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
             <ApplyTagsModal open={applyModalOpen} selectedCount={selected.size} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => setApplyModalOpen(false)} onApply={assignSelected} onRemove={removeSelected} onCreateTag={createTag} analysis={tagAnalysis} />
             <CreateTagModal open={createModalOpen} tagsTree={tagsTree} onClose={() => setCreateModalOpen(false)} onCreateTag={createTag} />
+            <MissingItemsDialog open={missingDialogOpen} items={missingItems} totalCount={missingItemsTotal} busy={missingDialogBusy} onClose={closeMissingDialog} onDeleteAll={deleteAllMissingItems} onDeleteSelected={deleteSelectedMissingItems} onCopyAll={copyMissingPaths} onExportList={exportMissingPaths} />
             {viewerPath && <FullscreenViewer files={items.filter((item) => item.type !== 'folder')} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => {setViewerPath('');if (window.history.state?.viewing) {window.history.back(); }}} onApplyTags={assignPaths} onRemoveTags={removePaths} onDeleteFile={deleteSingleItem} />}
             <Toast message={toast} />
         </main>

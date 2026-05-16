@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import TagGroupList from './TagGroupList.jsx';
 
 const HISTORY_KEY = 'lan-media-search-history';
+const SAVED_KEY = 'lan-media-saved-searches';
 
 export default function SearchPanel({ tagsTree, filters, setFilters, onSearch, onClear }) {
     const [advancedOpen, setAdvancedOpen] = useState(false);
     const [history, setHistory] = useState(() => {
         try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+    });
+    const [saved, setSaved] = useState(() => {
+        try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch { return []; }
     });
     const queryValue = filters.q ?? filters.name ?? '';
     const hasTyped = queryValue.trim().length > 0;
@@ -16,6 +20,9 @@ export default function SearchPanel({ tagsTree, filters, setFilters, onSearch, o
     useEffect(() => {
         localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 12)));
     }, [history]);
+    useEffect(() => {
+        localStorage.setItem(SAVED_KEY, JSON.stringify(saved));
+    }, [saved]);
 
     const toggleTag = (id) => {
         setFilters((current) => ({
@@ -30,6 +37,17 @@ export default function SearchPanel({ tagsTree, filters, setFilters, onSearch, o
         onSearch();
     };
     const applyHistory = (entry) => setFilters({ ...entry.filters });
+    const saveCurrent = () => {
+        const label = window.prompt('Saved search name', queryValue.trim() || 'Saved search');
+        if (!label) return;
+        setSaved((items) => [{ id: Date.now(), label, filters: { ...filters } }, ...items]);
+    };
+    const editSaved = (entry) => {
+        const label = window.prompt('Rename saved search', entry.label);
+        if (!label) return;
+        setSaved((items) => items.map((item) => item.id === entry.id ? { ...item, label } : item));
+    };
+    const deleteSaved = (entry) => setSaved((items) => items.filter((item) => item.id !== entry.id));
     const suggestions = useMemo(() => {
         const term = queryValue.trim().toLowerCase();
         if (!term) return [];
@@ -44,11 +62,15 @@ export default function SearchPanel({ tagsTree, filters, setFilters, onSearch, o
             </div>
             {suggestions.length > 0 && <div className="tag-suggestions">{suggestions.map((tag) => <button key={tag.id} className="history-chip" onClick={() => setFilters((f) => ({ ...f, q: tag.name, name: tag.name }))}>{tag.label}</button>)}</div>}
             {history.length > 0 && <div className="search-history"><span className="muted">Recent:</span>{history.map((entry) => <button key={entry.at} className="history-chip" onClick={() => applyHistory(entry)}>{entry.label}</button>)}</div>}
+            {saved.length > 0 && <div className="search-history"><span className="muted">Saved:</span>{saved.map((entry) => <span key={entry.id} className="saved-search-chip"><button className="history-chip" onClick={() => applyHistory(entry)}>{entry.label}</button><button className="history-chip" onClick={() => editSaved(entry)}>Edit</button><button className="history-chip" onClick={() => deleteSaved(entry)}>×</button></span>)}</div>}
             {(showOptions || advancedOpen) && <div className="search-options">
                 {advancedOpen && <div className="advanced-options">
                     <label>Match type<select value={filters.matchType || 'contains'} onChange={(e) => setFilters((f) => ({ ...f, matchType: e.target.value }))}><option value="contains">Contains</option><option value="exact">Exact match</option><option value="starts">Starts with</option><option value="ends">Ends with</option></select></label>
                     <label>Search scope<select value={filters.scope || 'both'} onChange={(e) => setFilters((f) => ({ ...f, scope: e.target.value }))}><option value="both">Name + Tags</option><option value="name">Name only</option><option value="tags">Tags only</option></select></label>
                     <label>File type<select value={filters.itemType || 'all'} onChange={(e) => setFilters((f) => ({ ...f, itemType: e.target.value }))}><option value="all">All</option><option value="image">Images</option><option value="video">Videos</option><option value="folder">Folders</option><option value="file">Files</option></select></label>
+                    <label>Path contains<input value={filters.pathFilter || ''} onChange={(e) => setFilters((f) => ({ ...f, pathFilter: e.target.value }))} placeholder="folder/name" /></label>
+                    <label>Date from<input type="date" value={filters.dateFrom || ''} onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))} /></label>
+                    <label>Date to<input type="date" value={filters.dateTo || ''} onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))} /></label>
                     <label className="inline-check"><input type="checkbox" checked={!!filters.caseSensitive} onChange={(e) => setFilters((f) => ({ ...f, caseSensitive: e.target.checked }))} /> Case sensitive</label>
                 </div>}
                 <label className="inline-check"><input type="checkbox" checked={filters.tagSearchEnabled} onChange={(e) => setFilters((f) => ({ ...f, tagSearchEnabled: e.target.checked, tags: e.target.checked ? f.tags : [] }))} /> Enable tag search</label>
@@ -59,7 +81,7 @@ export default function SearchPanel({ tagsTree, filters, setFilters, onSearch, o
                     </div>
                     <TagGroupList tagsTree={tagsTree} selectedTagIds={filters.tags} onToggleTag={toggleTag} displayMode="collapsed" limit={10} />
                 </>}
-                <div className="actions"><button className="secondary" onClick={onClear}>Clear filters</button></div>
+                <div className="actions"><button className="secondary" onClick={saveCurrent}>Save search</button><button className="secondary" onClick={onClear}>Clear filters</button></div>
             </div>}
         </section>
     );

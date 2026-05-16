@@ -148,6 +148,12 @@ main {
     color: #bfdbfe;
 }
 
+.saved-search-chip {
+    display: inline-flex;
+    gap: .2rem;
+    align-items: center;
+}
+
 input,
 select {
     width: 100%;
@@ -310,6 +316,30 @@ select {
     border: 1px solid rgba(248, 113, 113, .55);
 }
 
+.card-actions {
+    position: absolute;
+    z-index: 4;
+    left: .45rem;
+    right: .45rem;
+    bottom: .45rem;
+    display: none;
+    gap: .25rem;
+    flex-wrap: wrap;
+}
+
+.card:hover .card-actions,
+.card:focus-within .card-actions {
+    display: flex;
+}
+
+.card-actions button {
+    padding: .25rem .4rem;
+    border-radius: 7px;
+    background: rgba(15, 23, 42, .88);
+    border: 1px solid rgba(148, 163, 184, .35);
+    font-size: .72rem;
+}
+
 .favorite-button.active {
     background: #facc15;
     color: #422006;
@@ -381,6 +411,14 @@ select {
     font-size: .9rem;
     word-break: break-word;
     color: #dbeafe;
+}
+
+.file-meta {
+    display: grid;
+    gap: .15rem;
+    padding: 0 .65rem .65rem;
+    color: #94a3b8;
+    font-size: .75rem;
 }
 
 .card-tags {
@@ -468,6 +506,76 @@ select {
     justify-content: space-between;
     align-items: center;
     gap: 1rem;
+}
+
+.missing-items-modal {
+    width: min(860px, 100%);
+    display: grid;
+    gap: .9rem;
+}
+
+.missing-items-modal h2,
+.missing-items-modal p {
+    margin: 0;
+}
+
+.missing-items-summary,
+.missing-items-tools {
+    display: flex;
+    gap: .65rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.missing-items-summary {
+    justify-content: space-between;
+    color: #cbd5e1;
+}
+
+.warning-text {
+    color: #fbbf24;
+}
+
+.missing-items-list {
+    display: grid;
+    gap: .4rem;
+    max-height: 380px;
+    overflow-y: auto;
+    border: 1px solid #263044;
+    border-radius: 14px;
+    padding: .65rem;
+    background: rgba(15, 23, 42, .55);
+}
+
+.missing-item-row {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    gap: .6rem;
+    align-items: start;
+    padding: .45rem;
+    border-radius: 10px;
+    background: rgba(30, 41, 59, .55);
+}
+
+.missing-item-row input {
+    width: auto;
+    margin-top: .15rem;
+}
+
+.missing-item-type {
+    line-height: 1.35;
+}
+
+.missing-item-row code {
+    color: #bfdbfe;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .9rem;
+    white-space: normal;
+    word-break: break-all;
+}
+
+.missing-items-actions {
+    justify-content: flex-end;
 }
 
 .inline-form {

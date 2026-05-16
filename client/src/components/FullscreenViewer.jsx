@@ -11,6 +11,8 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
     const [zoom, setZoom] = useState(1.00001);
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [touch, setTouch] = useState(null);
+    const [autoPlay, setAutoPlay] = useState(() => localStorage.getItem('viewer-autoplay') === 'true');
+    const [playbackRate, setPlaybackRate] = useState(() => Number(localStorage.getItem('viewer-playback-rate') || 1));
     const currentIndex = files.findIndex((file) => file.path === currentPath);
     const file = files[currentIndex] || files[0];
     const previous = files[(currentIndex - 1 + files.length) % files.length];
@@ -35,6 +37,8 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
     }, [previous, next, onClose]);
+    useEffect(() => { localStorage.setItem('viewer-autoplay', String(autoPlay)); }, [autoPlay]);
+    useEffect(() => { localStorage.setItem('viewer-playback-rate', String(playbackRate)); }, [playbackRate]);
 
     if (!file) return null;
     const goPrevious = () => previous && setCurrentPath(previous.path);
@@ -264,7 +268,7 @@ const onTouchEnd = () => {
             <button className="viewer-delete" onClick={deleteCurrent}>Delete</button>
             <button className="viewer-meta-toggle" onClick={() => setShowMetadata((x) => !x)}>{showMetadata ? 'Hide info' : 'Show info'}</button>
             <section className="viewer-content" onDoubleClick={onDoubleClick} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-                {missing ? <div className="missing-file"><h2>File not found</h2><button onClick={removeMissing}>Remove from database</button></div> : file.type === 'image' ? <img className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} src={mediaUrl(file.path)} alt={file.name} onError={() => setMissing(true)} /> : <video className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} controls autoPlay={false} playsInline src={mediaUrl(file.path)} onError={() => setMissing(true)} />}
+                {missing ? <div className="missing-file"><h2>File not found</h2><button onClick={removeMissing}>Remove from database</button></div> : file.type === 'image' ? <img className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} src={mediaUrl(file.path)} alt={file.name} onError={() => setMissing(true)} /> : <video className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} controls autoPlay={autoPlay} playsInline src={mediaUrl(file.path)} onLoadedMetadata={(event) => { event.currentTarget.playbackRate = playbackRate; }} onError={() => setMissing(true)} />}
             </section>
             {showMetadata && <aside className="viewer-meta">
                 <h2>{file.name}</h2>
@@ -273,6 +277,7 @@ const onTouchEnd = () => {
                 <h3>Edit tags</h3>
                 <div className="compact-tags"><TagGroupList tagsTree={tagsTree} selectedTagIds={selectedTagIds} onToggleTag={toggle} displayMode={tagSettings.displayMode} /></div>
                 <div className="actions"><button disabled={!selectedTagIds.length} onClick={apply}>Add</button><button className="secondary" disabled={!selectedTagIds.length} onClick={remove}>Remove</button></div>
+                {file.type === 'video' && <><h3>Playback</h3><label className="inline-check"><input type="checkbox" checked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} /> Auto-play</label><br /><label>Speed<select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))}><option value="1">1x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="3">3x</option></select></label></>}
             </aside>}
             <div className="viewer-bottom-bar">
                 <button onClick={() => {
