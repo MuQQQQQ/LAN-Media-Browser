@@ -209,7 +209,7 @@ select {
 }
 
 .chip.recent {
-    border-color: #f59e0b;
+    border-color: var(--tag-color, #334155);
     box-shadow: inset 0 0 0 1px rgba(245, 158, 11, .35);
 }
 
@@ -274,15 +274,9 @@ select {
     background: #2563eb;
 }
 
-.stream-video-player {
-    width: 300px;
-    height: 600px;
-    background: #000;
-}
-
 .card {
     position: relative;
-    min-height: 170px;
+    min-height: 120px;
     background: #171b26;
     border: 1px solid #263044;
     border-radius: 16px;
@@ -426,6 +420,380 @@ select {
     border-radius: 14px;
 }
 
+.mobile-player {
+    --video-aspect-ratio: 1.777;
+    position: relative;
+    width: 100%;
+    max-width: min(100%, 980px);
+    margin-inline: auto;
+    aspect-ratio: var(--video-aspect-ratio);
+    min-height: 220px;
+    max-height: min(78vh, 760px);
+    overflow: hidden;
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at 50% 10%, rgba(59, 130, 246, .16), transparent 38%),
+        #020617;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .38);
+    isolation: isolate;
+    touch-action: manipulation;
+    transition: aspect-ratio .22s ease, max-height .22s ease, border-radius .18s ease, box-shadow .18s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-player--portrait {
+    width: min(100%, 460px);
+    aspect-ratio: var(--video-aspect-ratio);
+    min-height: min(72vh, 560px);
+}
+
+.mobile-player--landscape {
+    min-height: clamp(220px, 52vw, 620px);
+}
+
+.mobile-player:focus-visible {
+    outline: 3px solid #60a5fa;
+    outline-offset: 3px;
+}
+
+.mobile-player__viewport,
+.mobile-player__video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.mobile-player__viewport {
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    touch-action: manipulation;
+}
+
+.mobile-player__video {
+    object-fit: contain;
+    background: #000;
+}
+
+.mobile-player__shade {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background:
+        linear-gradient(180deg, rgba(2, 6, 23, .72), transparent 32%, transparent 56%, rgba(2, 6, 23, .88)),
+        radial-gradient(circle at 50% 50%, transparent 45%, rgba(0, 0, 0, .26));
+    opacity: 1;
+    transition: opacity .22s ease;
+}
+
+.mobile-player.controls-hidden .mobile-player__shade,
+.mobile-player.controls-hidden .mobile-player__topbar,
+.mobile-player.controls-hidden .mobile-player__controls {
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+}
+
+.mobile-player__topbar,
+.mobile-player__controls {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 4;
+    opacity: 1;
+    transition: opacity .2s ease, transform .2s ease;
+}
+
+.mobile-player__topbar {
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: max(.75rem, env(safe-area-inset-top)) .85rem .7rem;
+    pointer-events: none;
+}
+
+.mobile-player__title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #f8fafc;
+    font-weight: 700;
+    letter-spacing: .01em;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, .9);
+}
+
+.mobile-player__badge {
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 255, 255, .2);
+    border-radius: 999px;
+    padding: .22rem .55rem;
+    background: rgba(15, 23, 42, .52);
+    color: #dbeafe;
+    font-size: .72rem;
+    text-transform: uppercase;
+    backdrop-filter: blur(14px);
+}
+
+.mobile-player__controls {
+    bottom: 0;
+    display: grid;
+    gap: .55rem;
+    padding: .7rem .75rem max(.75rem, env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, transparent, rgba(2, 6, 23, .74));
+}
+
+.mobile-player__control-row {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .45rem;
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 999px;
+    background: rgba(15, 23, 42, .46);
+    backdrop-filter: blur(18px) saturate(140%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 12px 28px rgba(0, 0, 0, .25);
+}
+
+.mobile-player__icon-button,
+.mobile-player__pill-button,
+.mobile-player__starter,
+.mobile-player__replay {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, .14);
+    border-radius: 999px;
+    background: rgba(15, 23, 42, .58);
+    color: #fff;
+    line-height: 1;
+    touch-action: manipulation;
+    user-select: none;
+    backdrop-filter: blur(14px);
+}
+
+.mobile-player__icon-button:active,
+.mobile-player__pill-button:active,
+.mobile-player__starter:active,
+.mobile-player__replay:active {
+    transform: scale(.96);
+}
+
+.mobile-player__icon-button:focus-visible,
+.mobile-player__pill-button:focus-visible,
+.mobile-player__starter:focus-visible,
+.mobile-player__replay:focus-visible,
+.mobile-player__progress:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: 2px;
+}
+
+.mobile-player__pill-button {
+    min-width: 52px;
+    padding-inline: .72rem;
+    font-weight: 800;
+    color: #bfdbfe;
+}
+
+.mobile-player__time {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    min-width: 0;
+    margin-right: auto;
+    color: #e2e8f0;
+    font-size: .82rem;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, .8);
+}
+
+.mobile-player__progress {
+    position: relative;
+    width: 100%;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+}
+
+.mobile-player__progress-track {
+    position: relative;
+    width: 100%;
+    height: 5px;
+    overflow: visible;
+    border-radius: 999px;
+    background: rgba(226, 232, 240, .22);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, .36);
+}
+
+.mobile-player__buffered,
+.mobile-player__played {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    transform-origin: left center;
+    will-change: transform;
+}
+
+.mobile-player__buffered {
+    background: rgba(226, 232, 240, .42);
+}
+
+.mobile-player__played {
+    background: linear-gradient(90deg, #38bdf8, #2563eb 55%, #8b5cf6);
+    box-shadow: 0 0 18px rgba(59, 130, 246, .55);
+}
+
+.mobile-player__thumb {
+    position: absolute;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, .55), 0 0 0 5px rgba(59, 130, 246, .22);
+    transform: translate(-50%, -50%) scale(.9);
+    transition: transform .16s ease;
+    will-change: left, transform;
+}
+
+.mobile-player__progress.dragging .mobile-player__progress-track,
+.mobile-player__progress:hover .mobile-player__progress-track {
+    height: 7px;
+}
+
+.mobile-player__progress.dragging .mobile-player__thumb,
+.mobile-player__progress:hover .mobile-player__thumb {
+    transform: translate(-50%, -50%) scale(1.18);
+}
+
+.mobile-player__starter {
+    position: absolute;
+    z-index: 3;
+    width: 74px;
+    height: 74px;
+    font-size: 2rem;
+    background: rgba(15, 23, 42, .45);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+
+.mobile-player__starter span {
+    margin-left: .18rem;
+}
+
+.mobile-player__replay {
+    position: absolute;
+    z-index: 5;
+    gap: .35rem;
+    min-width: 118px;
+    padding-inline: 1rem;
+    font-weight: 800;
+    background: rgba(37, 99, 235, .74);
+}
+
+.mobile-player__spinner {
+    position: absolute;
+    z-index: 3;
+    width: 46px;
+    height: 46px;
+    border-radius: 999px;
+    border: 3px solid rgba(255, 255, 255, .24);
+    border-top-color: #fff;
+    animation: player-spin .7s linear infinite;
+    pointer-events: none;
+}
+
+.mobile-player__seek-feedback {
+    position: absolute;
+    top: 50%;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    width: 42%;
+    height: 70%;
+    max-height: 360px;
+    color: #fff;
+    pointer-events: none;
+    transform: translateY(-50%);
+    animation: seek-pop .72s ease both;
+    text-shadow: 0 3px 18px rgba(0, 0, 0, .85);
+}
+
+.mobile-player__seek-feedback.left {
+    left: 0;
+    border-radius: 0 999px 999px 0;
+    background: radial-gradient(circle at 20% 50%, rgba(255, 255, 255, .22), rgba(15, 23, 42, .12) 62%, transparent 72%);
+}
+
+.mobile-player__seek-feedback.right {
+    right: 0;
+    border-radius: 999px 0 0 999px;
+    background: radial-gradient(circle at 80% 50%, rgba(255, 255, 255, .22), rgba(15, 23, 42, .12) 62%, transparent 72%);
+}
+
+.mobile-player__seek-feedback span {
+    font-size: clamp(2rem, 10vw, 4.8rem);
+    line-height: .82;
+}
+
+.mobile-player__seek-feedback strong {
+    font-size: clamp(.95rem, 3vw, 1.35rem);
+}
+
+.mobile-player.is-fullscreen,
+.mobile-player:fullscreen,
+.mobile-player--pseudo-fullscreen {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    min-height: 100vh;
+    border-radius: 0;
+    aspect-ratio: auto;
+    background: #000;
+}
+
+.mobile-player.is-fullscreen.mobile-player--landscape .mobile-player__video,
+.mobile-player:fullscreen.mobile-player--landscape .mobile-player__video {
+    object-fit: contain;
+}
+
+.mobile-player--pseudo-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+}
+
+@keyframes player-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes seek-pop {
+    0% {
+        opacity: 0;
+        transform: translateY(-50%) scale(.82);
+    }
+
+    20% {
+        opacity: 1;
+        transform: translateY(-50%) scale(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(-50%) scale(1.08);
+    }
+}
+
 .stream-folder {
     display: block;
     width: 100%;
@@ -443,7 +811,9 @@ select {
 
 .folder {
     flex: 1;
-    min-height: 130px;
+    /* min-height: 130px; */
+    height: 180px;
+    aspect-ratio: 9 / 12;
     font-size: 4rem;
     background: #1e293b;
     border-radius: 0;
@@ -457,9 +827,67 @@ select {
 
 .folder img {
     width: 100%;
-    height: 130px;
+    /* height: 100px; */
     object-fit: cover;
     filter: saturate(.9) brightness(.8);
+}
+
+.nav-arrow-button {
+    /* 1. 基础定位与大小 */
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+
+    /* 2. 彻底清除浏览器默认按钮样式 */
+    border: none;
+    outline: none;
+    padding: 0;
+
+    /* 3. 形状与毛玻璃高档背景 */
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.4);
+    /* 半透明黑，如果是纯黑背景可以改成 rgba(255,255,255,0.1) */
+    backdrop-filter: blur(4px);
+    /* 现代毛玻璃效果，手机端极佳 */
+
+    /* 4. 平滑过渡动画 */
+    transition: all 0.25s ease;
+}
+
+/* 内部箭头的样式 */
+.nav-arrow-button span {
+    color: #ffffff;
+    font-size: 28px;
+    /* 调节箭头大小 */
+    font-weight: 300;
+    /* 让线条看起来更纤细精致 */
+    line-height: 1;
+    transform: translateY(-2px);
+    /* 文本字符通常偏下，微调 2px 达到绝对视觉居中 */
+    transition: transform 0.25s ease;
+}
+
+/* 5. 悬浮（Hover）与激活（Active）特效 */
+@media (hover: hover) {
+    .nav-arrow-button:hover {
+        background: rgba(0, 0, 0, 0.7);
+        /* 背景变深 */
+        transform: scale(1.05);
+        /* 按钮轻微放大 */
+    }
+
+    .nav-arrow-button:hover span {
+        transform: translateY(-2px) translateX(-2px);
+        /* 悬浮时箭头向左缩进一点，极具动感 */
+    }
+}
+
+.nav-arrow-button:active {
+    transform: scale(0.95);
+    /* 点击时按压反馈 */
 }
 
 .folder-badge {
@@ -475,18 +903,232 @@ select {
 }
 
 .thumb-button {
-    position: relative;
+    /* position: relative; */
     width: 100%;
+    height: auto;
+    aspect-ratio: 9 / 16;
     padding: 0;
-    background: #020617;
+    background: #b9c1e9;
     border-radius: 0;
+
+}
+
+/* 外部包裹容器，方便你定位这组按钮 */
+.nav-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    /* 按钮之间的间距 */
+}
+
+/* 所有控制按钮的通用基础样式 */
+.nav-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+
+    /* 彻底清除浏览器默认样式 */
+    border: none;
+    outline: none;
+    background: transparent;
+    /* 👈 彻底去掉圆圈背景，变成完全透明 */
+    padding: 0;
+
+    /* 平滑过渡动画 */
+    transition: transform 0.2s ease;
+}
+
+/* 内部符号的通用样式 */
+.nav-btn span {
+    color: rgba(255, 255, 255, 0.65);
+    /* 默认半透明白，高级不刺眼 */
+    font-size: 32px;
+    /* 控制符号的大小 */
+    font-weight: 300;
+    /* 让线条看起来更纤细精致 */
+    line-height: 1;
+    display: inline-block;
+    transition: color 0.2s ease, transform 0.25s ease;
+}
+
+/* ==================== 独立微调与悬浮动画 ==================== */
+
+/* 1. 上一页 (‹) */
+.nav-btn.prev span {
+    transform: translateY(-3px);
+    /* 文本字符微调居中 */
+}
+
+@media (hover: hover) {
+    .nav-btn.prev:hover span {
+        color: #ffffff;
+        /* 悬浮时变纯白 */
+        transform: translateY(-3px) translateX(-4px);
+        /* 👈 悬浮时箭头向左滑出 */
+    }
+}
+
+/* 2. 下一页 (›) */
+.nav-btn.next span {
+    transform: translateY(-3px);
+}
+
+@media (hover: hover) {
+    .nav-btn.next:hover span {
+        color: #ffffff;
+        transform: translateY(-3px) translateX(4px);
+        /* 👈 悬浮时箭头向右滑出 */
+    }
+}
+
+/* 3. 重置按钮 (↻) */
+.nav-btn.reset span {
+    font-size: 24px;
+    /* 旋转符号稍微调小一点，视觉上和箭头更配 */
+    transform: translateY(-1px);
+}
+
+@media (hover: hover) {
+    .nav-btn.reset:hover span {
+        color: #ffffff;
+        transform: translateY(-1px) rotate(180deg);
+        /* 👈 悬浮时顺时针转半圈，极具动感 */
+    }
+}
+
+/* ==================== 全局点击按压反馈 ==================== */
+.nav-btn:active {
+    transform: scale(0.85);
+    /* 点击时按钮整体轻微缩小，提供极佳的触控机械感 */
+}
+
+/* 外部包裹容器（通常挂在视频/图片查看器的顶部或角落） */
+.viewer-controls {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    /* 保持优雅的间距 */
+    padding: 10px;
+}
+
+/* 统一的按钮基础复位 */
+.viewer-btn {
+
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    background: transparent;
+    /* 无圆圈背景 */
+    padding: 0;
+    transition: transform 0.2s ease;
+}
+
+.viewer-btn.close {
+    position: fixed;
+    top: 35rem;
+    right: 10px;
+    z-index: 22;
+}
+
+.viewer-btn.delete {
+    position: fixed;
+    top: 2rem;
+    left: 1.5rem;
+    z-index: 22;
+}
+
+.viewer-btn.meta-toggle {
+    position: fixed;
+    top: 2rem;
+    right: 1.5rem;
+    z-index: 22;
+}
+
+/* 统一的内部符号样式 */
+.viewer-btn span {
+
+    color: rgba(255, 255, 255, 0.65);
+    /* 标志性的半透明白 */
+    font-size: 24px;
+    /* 精致的小尺寸 */
+    font-weight: 300;
+    line-height: 1;
+    display: inline-block;
+    transition: color 0.2s ease, transform 0.25s ease;
+}
+
+/* ==================== 专属悬浮动画特效 ==================== */
+
+/* 1. 关闭按钮 (✕) -> 悬浮时优雅旋转 90 度 */
+@media (hover: hover) {
+    .viewer-btn.close:hover span {
+        color: #ef4444;
+        /* 悬浮时变红，提示关闭/危险动作 */
+        transform: rotate(90deg);
+    }
+}
+
+/* 2. 删除按钮 (🗑) -> 悬浮时产生轻微的左右晃动（倒垃圾的感觉） */
+@media (hover: hover) {
+    .viewer-btn.delete:hover span {
+        color: #ef4444;
+        /* 提示危险删除 */
+        animation: trash-shake 0.3s ease-in-out infinite alternate;
+    }
+}
+
+/* 垃圾桶晃动动画 */
+@keyframes trash-shake {
+    0% {
+        transform: rotate(-6deg);
+    }
+
+    100% {
+        transform: rotate(6deg);
+    }
+}
+
+/* 3. 信息切换按钮 (ⓘ) -> 悬浮时放大，激活状态下变成主题蓝色 */
+.viewer-btn.meta-toggle.active span {
+    color: #3b82f6;
+    /* 当信息面板打开时，图标持续高亮蓝色 */
+    transform: scale(1.1);
+}
+
+@media (hover: hover) {
+    .viewer-btn.meta-toggle:hover span {
+        /* 如果已经是激活的蓝色，悬浮时稍微变亮，否则变成纯白 */
+        color: #ffffff;
+        transform: scale(1.15);
+    }
+}
+
+/* ==================== 统一的机械按压反馈 ==================== */
+.viewer-btn:active {
+    transform: scale(0.85);
+    /* 点击时利落缩小 */
 }
 
 .thumb-button img,
-.card img,
 .card video {
     width: 100%;
-    height: 130px;
+    height: 100%;
+    object-fit: cover;
+    background: #020617;
+    display: block;
+}
+
+.card img {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
     background: #020617;
     display: block;
@@ -932,8 +1574,15 @@ input[type="color"] {
     .card img,
     .card video,
     .folder {
-        height: 105px;
-        min-height: 105px;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .folder {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
 
     .inline-form {

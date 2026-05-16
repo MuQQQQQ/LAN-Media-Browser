@@ -1,5 +1,4 @@
 import { browseUrl, mediaUrl, thumbnailUrl } from '../api.js';
-import ReactPlayer from 'react-player'
 import VideoPlayer from './VideoPlayer.jsx';
 function formatBytes(value) {
     if (!Number.isFinite(value)) return '';
@@ -95,7 +94,7 @@ export default function FileGrid({ items, selectedPaths, layoutMode = 'grid', on
                                 {item.type === 'video' && <span className="play-overlay">▶</span>}
                             </button>
                         )}
-                        {renderInfo(item)}
+                        {item.type === 'folder' && renderInfo(item)}
                     </article>
                 );
             })}

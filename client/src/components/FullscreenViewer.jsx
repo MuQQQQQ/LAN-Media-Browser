@@ -15,8 +15,8 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
     const [playbackRate, setPlaybackRate] = useState(() => Number(localStorage.getItem('viewer-playback-rate') || 1));
     const currentIndex = files.findIndex((file) => file.path === currentPath);
     const file = files[currentIndex] || files[0];
-    const previous = files[(currentIndex - 1 + files.length) % files.length];
-    const next = files[(currentIndex + 1) % files.length];
+    const previous = currentIndex > 0 ? files[currentIndex - 1] : null;
+    const next = currentIndex < files.length - 1 ? files[currentIndex + 1] : null;
     const tagNameById = useMemo(() => new Map(tagsTree.flatMap((category) => category.children.map((tag) => [tag.id, `${category.name} / ${tag.name}`]))), [tagsTree]);
 
     useEffect(() => { setCurrentPath(initialPath); }, [initialPath]);
@@ -266,9 +266,19 @@ const onTouchEnd = () => {
 };
     return (
         <div className={`viewer ${showMetadata ? 'metadata-open' : 'metadata-hidden'}`} role="dialog" aria-modal="true" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-            <button className="viewer-close" onClick={onClose}>✕</button>
-            <button className="viewer-delete" onClick={deleteCurrent}>Delete</button>
-            <button className="viewer-meta-toggle" onClick={() => setShowMetadata((x) => !x)}>{showMetadata ? 'Hide info' : 'Show info'}</button>
+            {/* <button className="viewer-btn close" onClick={onClose} title="关闭">
+                <span>✕</span>
+            </button> */}
+
+            {/* 删除按钮 */}
+            <button className="viewer-btn delete" onClick={deleteCurrent} title="删除">
+                <span>🗑</span>
+            </button>
+
+            {/* 属性信息切换按钮 */}
+            <button className={`viewer-btn meta-toggle ${showMetadata ? 'active' : ''}`} onClick={() => setShowMetadata((x) => !x)} title={showMetadata ? '隐藏信息' : '显示信息'}>
+                <span>ⓘ</span>
+            </button>
             <section className="viewer-content" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} onDoubleClick={onDoubleClick} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
                 {missing ? <div className="missing-file"><h2>File not found</h2><button onClick={removeMissing}>Remove from database</button></div> : file.type === 'image' ? <img className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} src={mediaUrl(file.path)} alt={file.name} onError={() => setMissing(true)} /> : <video className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} controls autoPlay={autoPlay} playsInline src={mediaUrl(file.path)} onLoadedMetadata={(event) => { event.currentTarget.playbackRate = playbackRate; }} onError={() => setMissing(true)} />}
             </section>
@@ -282,13 +292,15 @@ const onTouchEnd = () => {
                 {file.type === 'video' && <><h3>Playback</h3><label className="inline-check"><input type="checkbox" checked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} /> Auto-play</label><br /><label>Speed<select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))}><option value="1">1x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="3">3x</option></select></label></>}
             </aside>}
             <div className="viewer-bottom-bar">
-                <button onClick={() => {
+                <button className="nav-btn reset" onClick={() => {
                     setZoom(1);
                     setPan({ x: 0, y: 0 });
-                }}>Reset</button>
-                <button onClick={goPrevious}>Previous</button>
-                <span className="viewer-count">Image {currentIndex + 1} / {files.length}</span>
-                <button onClick={goNext}>Next</button>
+                    setPlaybackRate(1);
+                    setAutoPlay(false);
+                }}><span>↻</span></button>
+                <button className="nav-btn prev" onClick={goPrevious} disabled={!previous}> <span>‹</span> </button>
+                <span className="viewer-count">{currentIndex + 1} / {files.length}</span>
+                <button className="nav-btn next" onClick={goNext} disabled={!next}> <span>›</span> </button>
                 {/* <div className="viewer-previews">
                     {previous && <button onClick={goPrevious}><img src={thumbnailUrl(previous)} alt={previous.name} />Prev</button>}
                     {next && <button onClick={goNext}><img src={thumbnailUrl(next)} alt={next.name} />Next</button>}

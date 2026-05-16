@@ -15,10 +15,27 @@ function normalizeColor(value) {
 
 function defaultTagColor(name, parentId) {
     const input = `${parentId || 'root'}:${name}`;
-    let hash = 0;
-    for (let i = 0; i < input.length; i += 1) hash = input.charCodeAt(i) + ((hash << 5) - hash);
-    const hue = Math.abs(hash) % 360;
-    return hslToHex(hue, 62, 48);
+
+    // 1. 使用混合度更高的 FNV-1a 核心思想或增强型 Hash
+    let hash = 2166136261; // 32位初始偏移量
+    for (let i = 0; i < input.length; i++) {
+        hash ^= input.charCodeAt(i);
+        // 利用位运算进行大范围混淆
+        hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+
+    // 使用无符号右移，确保得到正整数
+    const uHash = hash >>> 0;
+
+    // 2. 映射色相 (0 - 359)
+    const hue = uHash % 360;
+
+    // 3. 动态微调饱和度和亮度，避免大片颜色看起来完全一样
+    // 基于 hash 的其余部分动态加减，让基础值 (62%, 48%) 产生小幅波动
+    const saturation = 55 + (uHash % 15); // 范围在 55% - 70%
+    const lightness = 40 + ((uHash >> 4) % 15); // 范围在 40% - 55%
+
+    return hslToHex(hue, saturation, lightness);
 }
 
 function hslToHex(h, s, l) {

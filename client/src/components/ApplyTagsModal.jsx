@@ -21,7 +21,7 @@ export default function ApplyTagsModal({ open, selectedCount, tagsTree, tagSetti
                 <div className="modal-tags">
                     {(analysis?.common?.length || analysis?.partial?.length) && <div className="tag-analysis">
                         <h3>Common Tags</h3>
-                        <div className="chips">{analysis.common.map((tag) => <span key={tag.id} className="chip readonly" style={{ '--tag-color': tag.color || '#64748b' }}>{tag.name}</span>)}</div>
+                        <div className="chips">{analysis.common.map((tag) => <span key={tag.id} className="chip readonly" style={{ '--tag-color': tag.color || '#2f9ec6' }}>{tag.name}</span>)}</div>
                         <h3>Partial Tags</h3>
                         <div className="chips">{analysis.partial.map((tag) => <span key={tag.id} className="chip readonly" style={{ '--tag-color': tag.color || '#64748b' }}>{tag.name}</span>)}</div>
                     </div>}

@@ -99,6 +99,7 @@ export default function App() {
     const [sortDir, setSortDir] = useState(url.get('sortDir') || 'asc');
     const [layoutMode, setLayoutMode] = useState(() => localStorage.getItem('layoutMode') || 'grid');
     const [items, setItems] = useState([]);
+    const [isSelectedAll, setIsSelectedAll] = useState(false);
     const [total, setTotal] = useState(0);
     const [selected, setSelected] = useState(new Set());
     const [tagsTree, setTagsTree] = useState([]);
@@ -280,8 +281,21 @@ export default function App() {
         setItems((current) => current.map((entry) => entry.path === item.path ? { ...entry, favorite: !item.favorite } : entry));
     };
 
-    const selectAll = () => setSelected(new Set(items.map((item) => item.path)));
+    const selectAll = () => {
+        
+        setSelected(new Set(items.map((item) => item.path)));
+    }
     const deselectAll = () => setSelected(new Set());
+
+    const selectAllByKey =()=>{
+        if(isSelectedAll){
+            deselectAll();
+            setIsSelectedAll(false);
+        }else{
+            selectAll();
+            setIsSelectedAll(true);
+        }
+    }
     const selectedItemsForOps = () => items.filter((item) => selected.has(item.path));
     const normalizeOpItems = (targetItems) => targetItems.map((item) => ({ path: item.path, type: item.type === 'folder' ? 'folder' : 'file' }));
     const deleteItems = async (targetItems) => {
@@ -347,15 +361,18 @@ export default function App() {
     useEffect(() => {
         const handler = (event) => {
             const target = event.target;
-            if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return;
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); selectAll(); }
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') { event.preventDefault(); copyItemsToClipboard(selectedItemsForOps()); }
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') { event.preventDefault(); cutItemsToClipboard(selectedItemsForOps()); }
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') { event.preventDefault(); pasteItems(); }
+            if (target?.tagName === 'INPUT' && target.type !== 'checkbox' && target.type !== 'radio') return;
+            if (target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return;
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); selectAllByKey(); }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); setApplyModalOpen(true); }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') { event.preventDefault(); deselectAll(); }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') { event.preventDefault(); setToast('copy successfully');copyItemsToClipboard(selectedItemsForOps()); }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') { event.preventDefault(); setToast('cut successfully');cutItemsToClipboard(selectedItemsForOps()); }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') { event.preventDefault(); setToast('paste successfully');pasteItems(); }
             if (event.key === 'Delete') { event.preventDefault(); deleteSelected(); }
         };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
+        window.addEventListener('keydown', handler,true);
+        return () => window.removeEventListener('keydown', handler,true);
     }, [items, selected, clipboard, currentPath]);
 
     const closeMissingDialog = () => {
