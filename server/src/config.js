@@ -8,8 +8,7 @@ const serverRoot = path.resolve(__dirname, '..');
 
 dotenv.config({ path: path.resolve(serverRoot, '..', '.env'), override: true });
 // dotenv.config({ path: path.resolve(serverRoot, '.env') });
-console.log('ENV VALUE:', process.env);
-console.log(serverRoot);
+
 export const config = {
     host: process.env.HOST || '0.0.0.0',
     port: Number(process.env.PORT || 3000),

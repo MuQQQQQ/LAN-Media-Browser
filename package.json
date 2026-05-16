@@ -11,5 +11,14 @@
     },
     "devDependencies": {
         "concurrently": "^8.2.2"
+    },
+    "dependencies": {
+        "artplayer": "^5.4.0",
+        "react-native-nitro-modules": "^0.35.6",
+        "react-native-video": "^7.0.0-beta.9",
+        "react-player": "^3.4.0",
+        "react-window": "^2.2.7",
+        "video.js": "^8.23.7",
+        "xgplayer": "^3.0.24"
     }
 }

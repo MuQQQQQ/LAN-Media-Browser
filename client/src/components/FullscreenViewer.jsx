@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, mediaUrl, thumbnailUrl } from '../api.js';
 import TagGroupList from './TagGroupList.jsx';
-
+import ReactPlayer from 'react-player'
 export default function FullscreenViewer({ files, initialPath, tagsTree, tagSettings, onClose, onApplyTags, onRemoveTags, onDeleteFile }) {
     const [currentPath, setCurrentPath] = useState(initialPath);
     const [fileTags, setFileTags] = useState([]);
@@ -21,6 +21,8 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
 
     useEffect(() => { setCurrentPath(initialPath); }, [initialPath]);
     useEffect(() => {
+        console.log(files);
+        console.log('Loading tags for', file?.path);
         if (!file) return;
         api.fileTags(file.path).then((data) => setFileTags(data.tags)).catch(() => setFileTags([]));
         setSelectedTagIds([]);
@@ -31,8 +33,8 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
     useEffect(() => {
         const handler = (event) => {
             if (event.key === 'Escape') onClose();
-            if (event.key === 'ArrowLeft' && previous) setCurrentPath(previous.path);
-            if (event.key === 'ArrowRight' && next) setCurrentPath(next.path);
+            if ((event.key === 'ArrowLeft' || event.key === 'ArrowUp') && previous) setCurrentPath(previous.path);
+            if ((event.key === 'ArrowRight' || event.key === 'ArrowDown') && next) setCurrentPath(next.path);
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
@@ -263,11 +265,11 @@ const onTouchEnd = () => {
     setTouch(null);
 };
     return (
-        <div className={`viewer ${showMetadata ? 'metadata-open' : 'metadata-hidden'}`} role="dialog" aria-modal="true">
+        <div className={`viewer ${showMetadata ? 'metadata-open' : 'metadata-hidden'}`} role="dialog" aria-modal="true" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
             <button className="viewer-close" onClick={onClose}>✕</button>
             <button className="viewer-delete" onClick={deleteCurrent}>Delete</button>
             <button className="viewer-meta-toggle" onClick={() => setShowMetadata((x) => !x)}>{showMetadata ? 'Hide info' : 'Show info'}</button>
-            <section className="viewer-content" onDoubleClick={onDoubleClick} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+            <section className="viewer-content" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} onDoubleClick={onDoubleClick} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
                 {missing ? <div className="missing-file"><h2>File not found</h2><button onClick={removeMissing}>Remove from database</button></div> : file.type === 'image' ? <img className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} src={mediaUrl(file.path)} alt={file.name} onError={() => setMissing(true)} /> : <video className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} controls autoPlay={autoPlay} playsInline src={mediaUrl(file.path)} onLoadedMetadata={(event) => { event.currentTarget.playbackRate = playbackRate; }} onError={() => setMissing(true)} />}
             </section>
             {showMetadata && <aside className="viewer-meta">
@@ -285,7 +287,7 @@ const onTouchEnd = () => {
                     setPan({ x: 0, y: 0 });
                 }}>Reset</button>
                 <button onClick={goPrevious}>Previous</button>
-                <span className="viewer-count">{currentIndex + 1} / {files.length}</span>
+                <span className="viewer-count">Image {currentIndex + 1} / {files.length}</span>
                 <button onClick={goNext}>Next</button>
                 {/* <div className="viewer-previews">
                     {previous && <button onClick={goPrevious}><img src={thumbnailUrl(previous)} alt={previous.name} />Prev</button>}

@@ -258,6 +258,28 @@ select {
     gap: .85rem;
 }
 
+.file-grid-section {
+    display: grid;
+    gap: .85rem;
+}
+
+.layout-toggle {
+    display: flex;
+    gap: .5rem;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.layout-toggle button.active {
+    background: #2563eb;
+}
+
+.stream-video-player {
+    width: 300px;
+    height: 600px;
+    background: #000;
+}
+
 .card {
     position: relative;
     min-height: 170px;
@@ -338,6 +360,80 @@ select {
     background: rgba(15, 23, 42, .88);
     border: 1px solid rgba(148, 163, 184, .35);
     font-size: .72rem;
+}
+
+.compact-button {
+    padding: .35rem .55rem;
+}
+
+.favorite-button.inline {
+    position: static;
+    width: 36px;
+    height: 36px;
+}
+
+.stream-list {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.stream-item {
+    position: relative;
+    width: 100%;
+    background: #171b26;
+    border: 1px solid #263044;
+    border-radius: 18px;
+    overflow: hidden;
+    padding: .75rem;
+}
+
+.stream-item.selected {
+    outline: 3px solid #22c55e;
+}
+
+.stream-toolbar {
+    display: flex;
+    gap: .5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: .75rem;
+}
+
+.stream-toolbar .check,
+.stream-toolbar .card-actions {
+    position: static;
+    display: flex;
+    background: transparent;
+    padding: 0;
+}
+
+.stream-media-button {
+    width: 100%;
+    padding: 0;
+    background: transparent;
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.stream-media-button img,
+.stream-video {
+    width: 100%;
+    height: auto;
+    max-height: none;
+    object-fit: contain;
+    background: #020617;
+    display: block;
+    border-radius: 14px;
+}
+
+.stream-folder {
+    display: block;
+    width: 100%;
+    padding: 2rem;
+    border-radius: 14px;
+    background: #1e293b;
+    text-decoration: none;
+    font-size: 1.25rem;
 }
 
 .favorite-button.active {
@@ -664,6 +760,17 @@ input[type="color"] {
     background: #000;
     transition: transform .12s ease;
     transform-origin: center center;
+    animation: fade-in .16s ease-out;
+}
+
+@keyframes fade-in {
+    from {
+        opacity: .4;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .viewer-content img.zoomed,

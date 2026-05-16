@@ -97,6 +97,7 @@ export default function App() {
     const [pageSize, setPageSize] = useState(Number(url.get('pageSize') || 50));
     const [sortBy, setSortBy] = useState(url.get('sortBy') || 'name');
     const [sortDir, setSortDir] = useState(url.get('sortDir') || 'asc');
+    const [layoutMode, setLayoutMode] = useState(() => localStorage.getItem('layoutMode') || 'grid');
     const [items, setItems] = useState([]);
     const [total, setTotal] = useState(0);
     const [selected, setSelected] = useState(new Set());
@@ -119,6 +120,13 @@ export default function App() {
     const [clipboard, setClipboard] = useState(null);
 
     const selectedPaths = useMemo(() => Array.from(selected), [selected]);
+    const previewFiles = useMemo(() => items.filter((item) => item.type !== 'folder'), [items]);
+
+    const changeLayoutMode = (mode) => {
+        const next = mode === 'stream' ? 'stream' : 'grid';
+        setLayoutMode(next);
+        localStorage.setItem('layoutMode', next);
+    };
 
     async function loadTags() {
         const data = await api.tags(tagSettings.sortMode);
@@ -441,12 +449,12 @@ export default function App() {
                 {clipboard?.items?.length > 0 && <button className="secondary" onClick={() => pasteItems()}>Paste here ({clipboard.mode})</button>}
                 <button className="toolbar-push" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>Tag selected files ({selected.size})</button>
             </div>
-            <FileGrid items={items} selectedPaths={selected} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => {setViewerPath(file.path);window.history.pushState({ viewing: true }, '');}} onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} onRenameItem={renameItem} onMoveItems={moveItems} onCopyItems={copyItemsToClipboard} onCutItems={cutItemsToClipboard} onPasteItems={pasteItems} onTagItems={tagItems} pageSize={pageSize} />
+            <FileGrid items={items} selectedPaths={selected} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => {console.log(file,file.path); setViewerPath(file.path); console.log(viewerPath);window.history.pushState({ viewing: true }, '');}} onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} onRenameItem={renameItem} onMoveItems={moveItems} onCopyItems={copyItemsToClipboard} onCutItems={cutItemsToClipboard} onPasteItems={pasteItems} onTagItems={tagItems} pageSize={pageSize} />
             <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
             <ApplyTagsModal open={applyModalOpen} selectedCount={selected.size} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => setApplyModalOpen(false)} onApply={assignSelected} onRemove={removeSelected} onCreateTag={createTag} analysis={tagAnalysis} />
             <CreateTagModal open={createModalOpen} tagsTree={tagsTree} onClose={() => setCreateModalOpen(false)} onCreateTag={createTag} />
             <MissingItemsDialog open={missingDialogOpen} items={missingItems} totalCount={missingItemsTotal} busy={missingDialogBusy} onClose={closeMissingDialog} onDeleteAll={deleteAllMissingItems} onDeleteSelected={deleteSelectedMissingItems} onCopyAll={copyMissingPaths} onExportList={exportMissingPaths} />
-            {viewerPath && <FullscreenViewer files={items.filter((item) => item.type !== 'folder')} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => {setViewerPath('');if (window.history.state?.viewing) {window.history.back(); }}} onApplyTags={assignPaths} onRemoveTags={removePaths} onDeleteFile={deleteSingleItem} />}
+            {viewerPath && <FullscreenViewer files={previewFiles} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => {setViewerPath('');if (window.history.state?.viewing) {window.history.back(); }}} onApplyTags={assignPaths} onRemoveTags={removePaths} onDeleteFile={deleteSingleItem} />}
             <Toast message={toast} />
         </main>
     );
