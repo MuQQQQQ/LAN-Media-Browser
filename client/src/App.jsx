@@ -185,19 +185,14 @@ export default function App() {
         api.tagAnalysis(selectedItems).then(setTagAnalysis).catch(() => setTagAnalysis({ common: [], partial: [] }));
     }, [applyModalOpen, selected, items]);
     useEffect(() => {
-            const handlePopState = () => {
-                if (viewerPath) {
-                    setViewerPath(''); // 关闭预览
-                }
-            };
-            window.addEventListener('popstate', handlePopState);
-            // window.addEventListener('click', function() {
-            //     if (!document.fullscreenElement) {
-            //         document.documentElement.requestFullscreen();
-            //     }
-            // }, { once: true }); 
-            return () => window.removeEventListener('popstate', handlePopState);
-        }, [viewerPath]);
+        const handlePopState = () => {
+            const params = new URLSearchParams(window.location.search);
+            const viewPath = params.get('view');
+            setViewerPath(viewPath || '');
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, []);
     const navigate = (path) => {
         window.location.href = `/?${new URLSearchParams({
             path,
@@ -433,7 +428,11 @@ export default function App() {
     }
 
     if (isFavoritesPage) {
-        return <><Toast message={toast} /><FavoritesPage api={api} pageSize={pageSize} selected={selected} onToggleSelect={toggleSelect} onOpenFolder={navigate} onOpenFile={(file) => {setViewerPath(file.path);}} onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} /></>;
+        return <><Toast message={toast} /><FavoritesPage api={api} pageSize={pageSize} selected={selected} onToggleSelect={toggleSelect} onOpenFolder={navigate} onOpenFile={(file) => { setViewerPath(file.path); const u = new URL(window.location.href); u.searchParams.set('view', file.path); window.history.pushState({ viewing: true, filePath: file.path }, '', u.toString()); }} onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} /></>;
+    }
+
+    if (viewerPath) {
+        return <FullscreenViewer files={previewFiles} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => { setViewerPath(''); window.history.back(); }} onApplyTags={assignPaths} onRemoveTags={removePaths} onDeleteFile={deleteSingleItem} />;
     }
 
     return (
@@ -466,12 +465,11 @@ export default function App() {
                 {clipboard?.items?.length > 0 && <button className="secondary" onClick={() => pasteItems()}>Paste here ({clipboard.mode})</button>}
                 <button className="toolbar-push" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>Tag selected files ({selected.size})</button>
             </div>
-            <FileGrid items={items} selectedPaths={selected} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => {console.log(file,file.path); setViewerPath(file.path); console.log(viewerPath);window.history.pushState({ viewing: true }, '');}} onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} onRenameItem={renameItem} onMoveItems={moveItems} onCopyItems={copyItemsToClipboard} onCutItems={cutItemsToClipboard} onPasteItems={pasteItems} onTagItems={tagItems} pageSize={pageSize} />
+            <FileGrid items={items} selectedPaths={selected} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => { setViewerPath(file.path); const u = new URL(window.location.href); u.searchParams.set('view', file.path); window.history.pushState({ viewing: true, filePath: file.path }, '', u.toString()); }} onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} onRenameItem={renameItem} onMoveItems={moveItems} onCopyItems={copyItemsToClipboard} onCutItems={cutItemsToClipboard} onPasteItems={pasteItems} onTagItems={tagItems} pageSize={pageSize} />
             <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
             <ApplyTagsModal open={applyModalOpen} selectedCount={selected.size} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => setApplyModalOpen(false)} onApply={assignSelected} onRemove={removeSelected} onCreateTag={createTag} analysis={tagAnalysis} />
             <CreateTagModal open={createModalOpen} tagsTree={tagsTree} onClose={() => setCreateModalOpen(false)} onCreateTag={createTag} />
             <MissingItemsDialog open={missingDialogOpen} items={missingItems} totalCount={missingItemsTotal} busy={missingDialogBusy} onClose={closeMissingDialog} onDeleteAll={deleteAllMissingItems} onDeleteSelected={deleteSelectedMissingItems} onCopyAll={copyMissingPaths} onExportList={exportMissingPaths} />
-            {viewerPath && <FullscreenViewer files={previewFiles} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => {setViewerPath('');if (window.history.state?.viewing) {window.history.back(); }}} onApplyTags={assignPaths} onRemoveTags={removePaths} onDeleteFile={deleteSingleItem} />}
             <Toast message={toast} />
         </main>
     );
