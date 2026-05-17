@@ -44,7 +44,7 @@ function groupItems(items, tagsTree, groupCategory) {
   // items without any of the category's sub-tags
   const rest = items.filter((i) => !usedPaths.has(i.path));
   if (rest.length > 0) {
-    groups.push({ category: { name: 'No ' + category.name + ' tag', color: '#64748b', id: '_other' }, items: rest });
+    groups.push({ category: { name: 'Others', color: '#64748b', id: '_other' }, items: rest });
   }
 
   return groups;
@@ -102,7 +102,7 @@ export default function ContentGrid({
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 select-none">
       {/* item count */}
       <div className="px-1">
         <p className="text-xs text-text-muted">

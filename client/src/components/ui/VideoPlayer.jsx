@@ -21,6 +21,8 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
   const [seekHint, setSeekHint] = useState(null);
   const [scrubTime, setScrubTime] = useState(null);
   const [scrubbing, setScrubbing] = useState(false);
+  const [gestureScrubTime, setGestureScrubTime] = useState(null);
+  const [gestureScrubX, setGestureScrubX] = useState(null);
   const [showVolume, setShowVolume] = useState(false);
   const [spriteData, setSpriteData] = useState(null);
   const [spriteEnabled, setSpriteEnabled] = useState(() => localStorage.getItem('sprite-preview') !== 'off');
@@ -101,6 +103,22 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
   const flashIcon = useCallback((icon) => { setCenterIcon(icon); setTimeout(() => setCenterIcon(null), 600); }, []);
   const flashSeek = useCallback((dir, s) => { setSeekHint({ dir, s }); setTimeout(() => setSeekHint(null), 800); }, []);
 
+  // keyboard: space = play/pause
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === ' ' || e.code === 'Space') {
+        const v = videoRef.current; if (!v) return;
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+        e.preventDefault();
+        const wantPlay = v.paused || v.ended;
+        setPlaying(wantPlay);
+        flashIcon(wantPlay ? 'play' : 'pause');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [flashIcon]);
+
   // ── zone helper ──
   const getZone = useCallback((clientX) => {
     const r = overlayRef.current?.getBoundingClientRect();
@@ -133,7 +151,6 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
     g.lastTapX = e.clientX;
 
     const zone = getZone(e.clientX);
-    console.log('tap', { dt, dist, zone, mode: g.mode });
     // double-tap detection (only left/right zones)
     if (dt < 300 && dist < 40 && (zone === 'left' || zone === 'right')) {
       clearTimeout(g.tapTimer);
@@ -175,6 +192,7 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
       clearTimeout(g.tapTimer);
       g.mode = 'scrubbing';
       setScrubbing(true);
+      setGestureScrubX(e.clientX);
       const v = videoRef.current;
       if (!v || !duration) return;
       const secPerScreen = 10;
@@ -182,6 +200,7 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
       const nt = Math.max(0, Math.min(duration, g.startVideoTime + delta));
       v.currentTime = nt;
       setScrubTime(nt);
+      setGestureScrubTime(nt);
       setCurrentTime(nt);
     }
     if (g.axis === 'v') {
@@ -191,7 +210,7 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
 
   // ── POINTER UP ──
   const onUp = useCallback((e) => {
-    if (g.mode === 'scrubbing') { setScrubbing(false); setScrubTime(null); }
+    if (g.mode === 'scrubbing') { setScrubbing(false); setScrubTime(null); setGestureScrubTime(null); setGestureScrubX(null); }
     if (g.mode !== 'tapping') { g.mode = 'idle'; }
     g.locked = false; g.axis = null;
     if (g.ptrId != null) {
@@ -291,6 +310,8 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
           onScrubEnd={onProgressEnd}
           spriteData={spriteData}
           spriteEnabled={spriteEnabled}
+          gestureScrubTime={gestureScrubTime}
+          gestureScrubX={gestureScrubX}
           onSpriteToggle={() => {
             const next = !spriteEnabled;
             setSpriteEnabled(next);

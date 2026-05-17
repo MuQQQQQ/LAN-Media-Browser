@@ -175,8 +175,9 @@ thumbnailRouter.get('/video-sprite', async (req, res, next) => {
                         frameFiles.push(framePath);
                     }
                     // uniform 9:16 portrait thumb size
-                    const thumbW = 90;
-                    const thumbH = 160;
+                    const rate = 0.8;
+                    const thumbW = Math.round(90 * rate);
+                    const thumbH = Math.round(160 * rate);
                     const resized = [];
                     for (const f of frameFiles) {
                         const buf = await sharp(f)

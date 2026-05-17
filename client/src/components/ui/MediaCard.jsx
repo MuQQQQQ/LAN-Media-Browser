@@ -32,6 +32,8 @@ export default function MediaCard({ item, selected, layout, onOpen, onToggleSele
     }
     if (e.shiftKey) {
       e.preventDefault();
+      e.stopPropagation();
+      window.getSelection()?.removeAllRanges();
       onShiftClick?.(item.path);
       return;
     }

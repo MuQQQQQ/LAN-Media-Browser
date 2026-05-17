@@ -120,7 +120,7 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
         className="viewer-media-container absolute flex items-center justify-center overflow-hidden"
         style={{ top: 0, left: 0, right: 0, bottom: file.type === 'video' ? 60 : 60 }}
         animate={{
-          transform: (drawerOpen && window.innerWidth >= 768) ? 'scale(0.9) translateX(-120px)' : 'scale(1) translateX(0)',
+          transform: (drawerOpen && window.innerWidth >= 768) ? 'scale(0.9) translateX(-250px)' : 'scale(1) translateX(0)',
         }}
         transition={{ type: 'spring', stiffness: 350, damping: 30 }}
       >
@@ -152,7 +152,7 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
       </motion.div>
 
       {/* === FLOATING ACTION RAIL (right) === */}
-      <FloatingRail offset={drawerOpen ? 380 : 0}>
+      <FloatingRail offset={drawerOpen ? 600 : 0}>
         <RailButton icon={Info} label="Info" active={drawerOpen} onClick={() => setDrawerOpen((x) => !x)} />
         <RailButton
           icon={Star}

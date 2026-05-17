@@ -7,7 +7,7 @@ function fmt(s) {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 }
 
-export default function ProgressBar({ currentTime, duration, onSeek, onScrub, onScrubEnd, spriteData, spriteEnabled, onSpriteToggle }) {
+export default function ProgressBar({ currentTime, duration, onSeek, onScrub, onScrubEnd, spriteData, spriteEnabled, onSpriteToggle, gestureScrubTime, gestureScrubX }) {
   const trackRef = useRef(null);
   const downX = useRef(0);
   const moved = useRef(false);
@@ -72,7 +72,9 @@ export default function ProgressBar({ currentTime, duration, onSeek, onScrub, on
   const onTMove = (e) => { const t = e.touches[0]; if (t) move(t.clientX); };
   const onTEnd = (e) => { const t = e.changedTouches[0]; if (t) end(t.clientX); };
 
-  const spriteIdx = previewTime != null ? getSpriteIdx(previewTime) : -1;
+  const effectiveTime = previewTime ?? gestureScrubTime ?? null;
+  const effectiveX = previewTime != null ? previewX : gestureScrubX;
+  const spriteIdx = effectiveTime != null ? getSpriteIdx(effectiveTime) : -1;
   const spriteCol = spriteIdx >= 0 ? spriteIdx % spriteData.cols : 0;
   const spriteRow = spriteIdx >= 0 ? Math.floor(spriteIdx / spriteData.cols) : 0;
   
@@ -91,12 +93,12 @@ export default function ProgressBar({ currentTime, duration, onSeek, onScrub, on
       onTouchMove={onTMove}
       onTouchEnd={onTEnd}
     >
-      {/* sprite preview thumb */}
+      {/* sprite preview thumb — centered above playback position */}
       <AnimatePresence>
-        {spriteIdx >= 0 && spriteData && spriteEnabled && barActive && (
+        {spriteIdx >= 0 && spriteData && spriteEnabled && (barActive || gestureScrubTime != null) && (
           <motion.div
-            className="absolute bottom-full left-0 mb-2 pointer-events-none z-30"
-            style={{ left: previewX - trackRef.current?.getBoundingClientRect()?.left - 60 }}
+            className="absolute bottom-full mb-2 pointer-events-none z-30"
+            style={{ left: `calc(${progress * 100}% - ${(spriteData.thumbW || 90) / 2}px)` }}
             initial={{ opacity: 0, scale: 0.9, y: 4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0 }}
