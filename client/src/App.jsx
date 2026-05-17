@@ -1,476 +1,369 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api.js';
-import Breadcrumbs from './components/Breadcrumbs.jsx';
-import FileGrid from './components/FileGrid.jsx';
-import ApplyTagsModal from './components/ApplyTagsModal.jsx';
-import CreateTagModal from './components/CreateTagModal.jsx';
+import Navbar from './components/ui/Navbar.jsx';
+import SearchBar from './components/ui/SearchBar.jsx';
+import QuickFilters from './components/ui/QuickFilters.jsx';
+import ContentGrid from './components/ui/ContentGrid.jsx';
+import Modal from './components/ui/Modal.jsx';
+import Toast from './components/ui/Toast.jsx';
 import FullscreenViewer from './components/FullscreenViewer.jsx';
 import Pagination from './components/Pagination.jsx';
-import SearchPanel from './components/SearchPanel.jsx';
 import TagsPage from './components/TagsPage.jsx';
+import ApplyTagsModal from './components/ApplyTagsModal.jsx';
+import CreateTagModal from './components/CreateTagModal.jsx';
 import FavoritesPage from './components/FavoritesPage.jsx';
-import Toast from './components/Toast.jsx';
 import { loadTagSettings, saveTagSettings } from './tagSettings.js';
 
 const defaultFilters = { q: '', name: '', tags: [], tagMode: 'and', matchType: 'contains', scope: 'both', caseSensitive: false, itemType: 'all', pathFilter: '', dateFrom: '', dateTo: '', tagSearchEnabled: false };
-
-function updateUrl(params) {
-    const next = new URLSearchParams(params);
-    window.history.replaceState(null, '', `${window.location.pathname}?${next}`);
-}
-
+const HISTORY_KEY = 'lan-media-search-history';
+const SAVED_KEY = 'lan-media-saved-searches';
 const MISSING_ITEMS_PREVIEW_LIMIT = 200;
 
-function MissingItemsDialog({ open, items, totalCount, busy, onClose, onDeleteAll, onDeleteSelected, onCopyAll, onExportList }) {
-    const [selectedPaths, setSelectedPaths] = useState(new Set());
-
-    useEffect(() => {
-        if (open) setSelectedPaths(new Set(items.map((item) => item.path)));
-    }, [open, items]);
-
-    if (!open) return null;
-
-    const shownCount = items.length;
-    const isTruncated = totalCount > shownCount;
-    const selectedItems = items.filter((item) => selectedPaths.has(item.path));
-    const allShownSelected = shownCount > 0 && selectedPaths.size === shownCount;
-    const togglePath = (path) => setSelectedPaths((current) => {
-        const next = new Set(current);
-        next.has(path) ? next.delete(path) : next.add(path);
-        return next;
-    });
-    const toggleAllShown = () => setSelectedPaths(allShownSelected ? new Set() : new Set(items.map((item) => item.path)));
-
-    return (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="missing-items-title">
-            <section className="modal missing-items-modal">
-                <header>
-                    <div>
-                        <h2 id="missing-items-title">Missing Items Detected</h2>
-                        <p className="muted">These items exist in the database but are missing locally.</p>
-                    </div>
-                    <button className="secondary" onClick={onClose} disabled={busy} aria-label="Close missing items dialog">✕</button>
-                </header>
-
-                <div className="missing-items-summary">
-                    <strong>{totalCount} missing item(s)</strong>
-                    <span>{selectedPaths.size} selected from {shownCount} shown</span>
-                    {isTruncated && <span className="warning-text">Showing first {MISSING_ITEMS_PREVIEW_LIMIT} items for performance.</span>}
-                </div>
-
-                <div className="missing-items-tools">
-                    <label className="inline-check">
-                        <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown} disabled={!shownCount || busy} />
-                        Select all shown
-                    </label>
-                    <button className="secondary" onClick={onCopyAll} disabled={!shownCount || busy}>Copy all paths</button>
-                    <button className="secondary" onClick={onExportList} disabled={!shownCount || busy}>Export list</button>
-                </div>
-
-                <div className="missing-items-list" role="list" aria-label="Missing item paths">
-                    {items.map((item) => {
-                        const type = item.itemType === 'folder' || item.type === 'folder' ? 'folder' : 'file';
-                        return (
-                            <label className="missing-item-row" key={item.path} title={item.path} role="listitem">
-                                <input type="checkbox" checked={selectedPaths.has(item.path)} onChange={() => togglePath(item.path)} disabled={busy} />
-                                <span className="missing-item-type" aria-label={type}>{type === 'folder' ? '📁' : '📄'}</span>
-                                <code>{item.path}</code>
-                            </label>
-                        );
-                    })}
-                </div>
-
-                <div className="actions missing-items-actions">
-                    <button className="danger" onClick={() => onDeleteAll()} disabled={busy || !totalCount}>Delete All</button>
-                    <button className="danger" onClick={() => onDeleteSelected(selectedItems)} disabled={busy || !selectedItems.length}>Delete selected ({selectedItems.length})</button>
-                    <button className="secondary" onClick={onClose} disabled={busy}>Cancel</button>
-                </div>
-            </section>
-        </div>
-    );
+function updateUrl(params) {
+  const next = typeof params === 'string' ? params : new URLSearchParams(params);
+  window.history.replaceState(null, '', `${window.location.pathname}?${next}`);
 }
 
 export default function App() {
-    const url = new URLSearchParams(window.location.search);
-    const [currentPath, setCurrentPath] = useState(url.get('path') || '');
-    const [page, setPage] = useState(Number(url.get('page') || 1));
-    const [pageSize, setPageSize] = useState(Number(url.get('pageSize') || 50));
-    const [sortBy, setSortBy] = useState(url.get('sortBy') || 'name');
-    const [sortDir, setSortDir] = useState(url.get('sortDir') || 'asc');
-    const [layoutMode, setLayoutMode] = useState(() => localStorage.getItem('layoutMode') || 'grid');
-    const [items, setItems] = useState([]);
-    const [isSelectedAll, setIsSelectedAll] = useState(false);
-    const [total, setTotal] = useState(0);
-    const [selected, setSelected] = useState(new Set());
-    const [tagsTree, setTagsTree] = useState([]);
-    const [tagSettings, setTagSettings] = useState(loadTagSettings);
-    const [filters, setFilters] = useState(defaultFilters);
-    const [isSearchPage] = useState(window.location.pathname === '/search');
-    const [isTagsPage] = useState(window.location.pathname === '/tags');
-    const [isFavoritesPage] = useState(window.location.pathname === '/favorites');
-    const [applyModalOpen, setApplyModalOpen] = useState(false);
-    const [createModalOpen, setCreateModalOpen] = useState(false);
-    const [viewerPath, setViewerPath] = useState('');
-    const [error, setError] = useState('');
-    const [toast, setToast] = useState('');
-    const [tagAnalysis, setTagAnalysis] = useState({ common: [], partial: [] });
-    const [missingItems, setMissingItems] = useState([]);
-    const [missingItemsTotal, setMissingItemsTotal] = useState(0);
-    const [missingDialogOpen, setMissingDialogOpen] = useState(false);
-    const [missingDialogBusy, setMissingDialogBusy] = useState(false);
-    const [clipboard, setClipboard] = useState(null);
+  const url = new URLSearchParams(window.location.search);
+  const [currentPath, setCurrentPath] = useState(url.get('path') || '');
+  const [page, setPage] = useState(Number(url.get('page') || 1));
+  const [pageSize, setPageSize] = useState(Number(url.get('pageSize') || 50));
+  const [sortBy, setSortBy] = useState(url.get('sortBy') || 'name');
+  const [sortDir, setSortDir] = useState(url.get('sortDir') || 'asc');
+  const [layoutMode, setLayoutMode] = useState(() => localStorage.getItem('layoutMode') || 'grid');
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [selected, setSelected] = useState(new Set());
+  const [tagsTree, setTagsTree] = useState([]);
+  const [tagSettings, setTagSettings] = useState(loadTagSettings);
+  const [filters, setFilters] = useState({ ...defaultFilters, itemType: url.get('itemType') || 'all' });
+  const [isSearchPage] = useState(window.location.pathname === '/search');
+  const [isTagsPage] = useState(window.location.pathname === '/tags');
+  const [isFavoritesPage] = useState(window.location.pathname === '/favorites');
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [viewerPath, setViewerPath] = useState('');
+  const [error, setError] = useState('');
+  const [toast, setToast] = useState('');
+  const [tagAnalysis, setTagAnalysis] = useState({ common: [], partial: [] });
+  const [missingItems, setMissingItems] = useState([]);
+  const [missingItemsTotal, setMissingItemsTotal] = useState(0);
+  const [missingDialogOpen, setMissingDialogOpen] = useState(false);
+  const [missingDialogBusy, setMissingDialogBusy] = useState(false);
+  const [clipboard, setClipboard] = useState(null);
+  const [history, setHistory] = useState(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; } });
+  const [saved, setSaved] = useState(() => { try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch { return []; } });
+  const [isSelectedAll, setIsSelectedAll] = useState(false);
 
-    const selectedPaths = useMemo(() => Array.from(selected), [selected]);
-    const previewFiles = useMemo(() => items.filter((item) => item.type !== 'folder'), [items]);
+  const selectedPaths = useMemo(() => new Set(Array.from(selected)), [selected]);
+  const previewFiles = useMemo(() => items.filter((i) => i.type !== 'folder'), [items]);
 
-    const changeLayoutMode = (mode) => {
-        const next = mode === 'stream' ? 'stream' : 'grid';
-        setLayoutMode(next);
-        localStorage.setItem('layoutMode', next);
-    };
+  // ==================== DATA LOADING ====================
+  async function loadTags() {
+    const data = await api.tags(tagSettings.sortMode);
+    setTagsTree(data.tags);
+  }
+  async function load() {
+    setError('');
+    try {
+      if (isSearchPage) {
+        const searchTags = (url.get('tags') || '').split(',').map(Number).filter(Boolean);
+        const sf = { tags: searchTags, tagMode: url.get('tagMode') || 'and', q: url.get('q') || url.get('name') || '', name: url.get('q') || url.get('name') || '', matchType: url.get('matchType') || 'contains', scope: url.get('scope') || 'both', caseSensitive: url.get('caseSensitive') === 'true', itemType: url.get('itemType') || 'all', pathFilter: url.get('pathFilter') || '', dateFrom: url.get('dateFrom') || '', dateTo: url.get('dateTo') || '' };
+        setFilters((f) => ({ ...f, ...sf, tagSearchEnabled: searchTags.length > 0 }));
+        const data = await api.search({ ...sf, page, pageSize, sortBy, sortDir });
+        setItems(data.files);
+        setTotal(data.total);
+        updateUrl(new URLSearchParams({ ...Object.fromEntries(url), page: String(page), pageSize: String(pageSize), sortBy, sortDir }));
+      } else {
+        const data = await api.browse({ path: currentPath, page, pageSize, sortBy, sortDir });
+        setItems(data.items);
+        setTotal(data.total);
+        updateUrl({ path: currentPath, page, pageSize, sortBy, sortDir });
+      }
+    } catch (err) { setError(err.message); }
+  }
 
-    async function loadTags() {
-        const data = await api.tags(tagSettings.sortMode);
-        setTagsTree(data.tags);
-    }
+  useEffect(() => { loadTags().catch((e) => setError(e.message)); }, [tagSettings.sortMode]);
+  useEffect(() => { if (!isTagsPage && !isFavoritesPage) load(); }, [currentPath, page, pageSize, sortBy, sortDir, isSearchPage, isTagsPage, isFavoritesPage]);
+  useEffect(() => { if (!isTagsPage) { api.orphanRecords().then((d) => { if (d.count > 0) { setMissingItems(d.items || []); setMissingItemsTotal(d.count); setMissingDialogOpen(true); } }).catch(() => {}); } }, []);
+  useEffect(() => { if (toast) { const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); } }, [toast]);
+  useEffect(() => { if (applyModalOpen && selected.size) { const si = items.filter((i) => selected.has(i.path)).map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); api.tagAnalysis(si).then(setTagAnalysis).catch(() => setTagAnalysis({ common: [], partial: [] })); } }, [applyModalOpen, selected, items]);
+  useEffect(() => { localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 12))); }, [history]);
+  useEffect(() => { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); }, [saved]);
 
-    async function load() {
-        setError('');
-        try {
-            if (isSearchPage) {
-                const searchTags = (url.get('tags') || '').split(',').map(Number).filter(Boolean);
-                const searchFilters = { tags: searchTags, tagMode: url.get('tagMode') || 'and', q: url.get('q') || url.get('name') || '', name: url.get('q') || url.get('name') || '', matchType: url.get('matchType') || 'contains', scope: url.get('scope') || 'both', caseSensitive: url.get('caseSensitive') === 'true', itemType: url.get('itemType') || 'all', pathFilter: url.get('pathFilter') || '', dateFrom: url.get('dateFrom') || '', dateTo: url.get('dateTo') || '' };
-                setFilters((current) => ({ ...current, ...searchFilters, tagSearchEnabled: searchTags.length > 0 }));
-                const data = await api.search({ ...searchFilters, page, pageSize, sortBy, sortDir });
-                setItems(data.files);
-                setTotal(data.total);
-                const nextParams = new URLSearchParams(window.location.search);
-                nextParams.set('page', page);
-                nextParams.set('pageSize', pageSize);
-                nextParams.set('sortBy', sortBy);
-                nextParams.set('sortDir', sortDir);
-                updateUrl(nextParams);
-            } else {
-                const data = await api.browse({ path: currentPath, page, pageSize, sortBy, sortDir });
-                setItems(data.items);
-                setTotal(data.total);
-                updateUrl({ path: currentPath, page, pageSize, sortBy, sortDir });
-            }
-        } catch (err) {
-            setError(err.message);
-        }
-    }
+  // popstate
+  useEffect(() => {
+    const h = () => { const p = new URLSearchParams(window.location.search); setViewerPath(p.get('view') || ''); };
+    window.addEventListener('popstate', h);
+    return () => window.removeEventListener('popstate', h);
+  }, []);
 
-    useEffect(() => { loadTags().catch((err) => setError(err.message)); }, [tagSettings.sortMode]);
-    useEffect(() => { if (!isTagsPage && !isFavoritesPage) load(); }, [currentPath, page, pageSize, sortBy, sortDir, isSearchPage, isTagsPage, isFavoritesPage]);
-    useEffect(() => {
-        if (isTagsPage) return;
+  // keyboard shortcuts
+  useEffect(() => {
+    const handler = (event) => {
+      const t = event.target;
+      if (t?.tagName === 'INPUT' && t.type !== 'checkbox' && t.type !== 'radio') return;
+      if (t?.tagName === 'TEXTAREA' || t?.tagName === 'SELECT') return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); selectAllByKey(); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); setApplyModalOpen(true); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') { event.preventDefault(); deselectAll(); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') { event.preventDefault(); copyItemsToClipboard(selectedItemsForOps()); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') { event.preventDefault(); cutItemsToClipboard(selectedItemsForOps()); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') { event.preventDefault(); pasteItems(); }
+      if (event.key === 'Delete') { event.preventDefault(); deleteSelected(); }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [items, selected, clipboard, currentPath]);
 
-        api.orphanRecords()
-            .then((data) => {
-                console.log('Orphan records:', data.items);
+  // ==================== ACTIONS ====================
+  const navigate = (path) => { window.location.href = `/?${new URLSearchParams({ path, page: 1, pageSize, sortBy, sortDir })}`; };
+  const toggleSelect = (path) => setSelected((p) => { const n = new Set(p); n.has(path) ? n.delete(path) : n.add(path); return n; });
+  const changeLayoutMode = (mode) => { const n = mode === 'masonry' ? 'masonry' : 'grid'; setLayoutMode(n); localStorage.setItem('layoutMode', n); };
+  const selectAll = () => setSelected(new Set(items.map((i) => i.path)));
+  const deselectAll = () => setSelected(new Set());
+  const selectAllByKey = () => { if (isSelectedAll) { deselectAll(); setIsSelectedAll(false); } else { selectAll(); setIsSelectedAll(true); } };
+  const selectedItemsForOps = () => items.filter((i) => selected.has(i.path));
+  const normalizeOpItems = (ti) => ti.map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' }));
 
-                if (data.count > 0) {
-                    setMissingItems(Array.isArray(data.items) ? data.items : []);
-                    setMissingItemsTotal(data.count);
-                    setMissingDialogOpen(true);
-                }
-            })
-            .catch(() => {});
-    }, []);
-    useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(''), 2600); return () => clearTimeout(timer); } }, [toast]);
-    useEffect(() => {
-        if (!applyModalOpen || !selected.size) return;
-        const selectedItems = items.filter((item) => selected.has(item.path)).map((item) => ({ path: item.path, type: item.type === 'folder' ? 'folder' : 'file' }));
-        api.tagAnalysis(selectedItems).then(setTagAnalysis).catch(() => setTagAnalysis({ common: [], partial: [] }));
-    }, [applyModalOpen, selected, items]);
-    useEffect(() => {
-        const handlePopState = () => {
-            const params = new URLSearchParams(window.location.search);
-            const viewPath = params.get('view');
-            setViewerPath(viewPath || '');
-        };
-        window.addEventListener('popstate', handlePopState);
-        return () => window.removeEventListener('popstate', handlePopState);
-    }, []);
-    const navigate = (path) => {
-        window.location.href = `/?${new URLSearchParams({
-            path,
-            page: 1,
-            pageSize,
-            sortBy,
-            sortDir
-        })}`;
-        // window.open(`/?${new URLSearchParams({ path, page: 1, pageSize })}`, '_blank', 'noopener,noreferrer');
-    };
-    const toggleSelect = (path) => setSelected((prev) => {
-        const next = new Set(prev);
-        next.has(path) ? next.delete(path) : next.add(path);
-        return next;
-    });
-    const runSearch = () => {
-        const params = new URLSearchParams({ tagMode: filters.tagMode, page: 1, pageSize, sortBy, sortDir });
-        params.set('q', filters.q || filters.name || '');
-        params.set('matchType', filters.matchType);
-        params.set('scope', filters.scope);
-        params.set('caseSensitive', filters.caseSensitive);
-        params.set('itemType', filters.itemType);
-        if (filters.pathFilter) params.set('pathFilter', filters.pathFilter);
-        if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
-        if (filters.dateTo) params.set('dateTo', filters.dateTo);
-        if (filters.tagSearchEnabled && filters.tags.length) params.set('tags', filters.tags.join(','));
-        window.open(`/search?${params}`, '_blank');
-    };
-    const clearFilters = () => {
-        setFilters(defaultFilters);
-        setPage(1);
-    };
-    const assignPaths = async (paths, tagIds) => {
-        await api.assignTags({ paths, tagIds });
-        await loadTags();
-        await load().catch(() => {});
-        setToast('Tag added successfully');
-    };
-    const assignSelected = async (tagIds) => {
-        const selectedItems = items.filter((item) => selected.has(item.path)).map((item) => ({ path: item.path, type: item.type === 'folder' ? 'folder' : 'file' }));
-        await assignPaths(selectedItems, tagIds);
-        setApplyModalOpen(false);
-    };
-    const removePaths = async (paths, tagIds) => {
-        await api.removeTags({ paths, tagIds });
-        await loadTags();
-        await load().catch(() => {});
-        setToast('Tag removed');
-    };
-    const removeSelected = async (tagIds) => {
-        const selectedItems = items.filter((item) => selected.has(item.path)).map((item) => ({ path: item.path, type: item.type === 'folder' ? 'folder' : 'file' }));
-        await removePaths(selectedItems, tagIds);
-        setApplyModalOpen(false);
-    };
-    const createTag = async (payload) => {
-        await api.createTag(payload);
-        await loadTags();
-        setToast('Tag added successfully');
-    };
+  const runSearch = () => {
+    const label = (filters.q || filters.name || '').trim() || (filters.tags.length ? filters.tags.join(',') : 'All');
+    const entry = { label, filters: { ...filters }, at: Date.now() };
+    setHistory((h) => [entry, ...h.filter((e) => JSON.stringify(e.filters) !== JSON.stringify(entry.filters))].slice(0, 12));
+    const params = new URLSearchParams({ tagMode: filters.tagMode, page: 1, pageSize, sortBy, sortDir });
+    params.set('q', filters.q || filters.name || '');
+    params.set('matchType', filters.matchType);
+    params.set('scope', filters.scope);
+    params.set('caseSensitive', filters.caseSensitive);
+    params.set('itemType', filters.itemType);
+    if (filters.pathFilter) params.set('pathFilter', filters.pathFilter);
+    if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+    if (filters.dateTo) params.set('dateTo', filters.dateTo);
+    if (filters.tagSearchEnabled && filters.tags.length) params.set('tags', filters.tags.join(','));
+    window.open(`/search?${params}`, '_blank');
+  };
+  const clearFilters = () => { setFilters(defaultFilters); setPage(1); };
 
-    const updateTag = async (id, payload) => {
-        await api.updateTag(id, payload);
-        await loadTags();
-        setToast('Tag updated');
-    };
-    const deleteTag = async (id) => {
-        if (!confirm('Delete this tag? Child tags and file assignments may be removed.')) return;
-        await api.deleteTag(id);
-        await loadTags();
-    };
+  const assignPaths = async (paths, tagIds) => { await api.assignTags({ paths, tagIds }); await loadTags(); await load().catch(() => {}); setToast('Tag added'); };
+  const assignSelected = async (tagIds) => { const si = items.filter((i) => selected.has(i.path)).map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); await assignPaths(si, tagIds); setApplyModalOpen(false); };
+  const removePaths = async (paths, tagIds) => { await api.removeTags({ paths, tagIds }); await loadTags(); await load().catch(() => {}); setToast('Tag removed'); };
+  const removeSelected = async (tagIds) => { const si = items.filter((i) => selected.has(i.path)).map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); await removePaths(si, tagIds); setApplyModalOpen(false); };
+  const createTag = async (payload) => { await api.createTag(payload); await loadTags(); setToast('Tag created'); };
+  const updateTag = async (id, payload) => { await api.updateTag(id, payload); await loadTags(); setToast('Tag updated'); };
+  const deleteTag = async (id) => { if (!confirm('Delete this tag?')) return; await api.deleteTag(id); await loadTags(); };
 
-    const toggleFavorite = async (item) => {
-        const payload = { path: item.path, type: item.type === 'folder' ? 'folder' : 'file' };
-        if (item.favorite) {
-            await api.removeFavorite(payload);
-            setToast('Removed from favorites');
-        } else {
-            await api.addFavorite(payload);
-            setToast('Added to favorites');
-        }
-        setItems((current) => current.map((entry) => entry.path === item.path ? { ...entry, favorite: !item.favorite } : entry));
-    };
+  const toggleFavorite = async (item) => {
+    const payload = { path: item.path, type: item.type === 'folder' ? 'folder' : 'file' };
+    if (item.favorite) { await api.removeFavorite(payload); setToast('Removed from favorites'); }
+    else { await api.addFavorite(payload); setToast('Added to favorites'); }
+    setItems((c) => c.map((e) => e.path === item.path ? { ...e, favorite: !item.favorite } : e));
+  };
 
-    const selectAll = () => {
-        
-        setSelected(new Set(items.map((item) => item.path)));
-    }
-    const deselectAll = () => setSelected(new Set());
+  const deleteItems = async (targetItems) => {
+    if (!targetItems.length) return;
+    if (!confirm(`Delete ${targetItems.length === 1 ? 'this item' : `${targetItems.length} items`}?`)) return;
+    const payload = targetItems.map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' }));
+    const result = await api.deleteItems(payload);
+    setSelected(new Set());
+    await load().catch(() => {});
+    setToast(result.failed ? `${result.deleted} deleted, ${result.failed} failed` : 'Deleted');
+  };
+  const deleteSingleItem = (item) => deleteItems([item]);
+  const deleteSelected = () => deleteItems(items.filter((i) => selected.has(i.path)));
 
-    const selectAllByKey =()=>{
-        if(isSelectedAll){
-            deselectAll();
-            setIsSelectedAll(false);
-        }else{
-            selectAll();
-            setIsSelectedAll(true);
-        }
-    }
-    const selectedItemsForOps = () => items.filter((item) => selected.has(item.path));
-    const normalizeOpItems = (targetItems) => targetItems.map((item) => ({ path: item.path, type: item.type === 'folder' ? 'folder' : 'file' }));
-    const deleteItems = async (targetItems) => {
-        if (!targetItems.length) return;
-        const label = targetItems.length === 1 ? 'selected item' : `${targetItems.length} selected item(s)`;
-        if (!confirm(`Are you sure you want to delete the ${label}?`)) return;
-        const payload = targetItems.map((item) => ({ path: item.path, type: item.type === 'folder' ? 'folder' : 'file' }));
-        const result = await api.deleteItems(payload);
-        setSelected(new Set());
-        await load().catch(() => {});
-        if (result.failed) setToast(`${result.deleted} deleted, ${result.failed} failed`);
-        else if (result.results?.some((item) => item.status === 'db-only')) setToast('File not found locally, removed database record only');
-        else setToast('Deleted successfully');
-    };
-    const deleteSingleItem = (item) => deleteItems([item]);
-    const deleteSelected = () => deleteItems(items.filter((item) => selected.has(item.path)));
+  const moveItems = async (targetItems) => {
+    if (!targetItems.length) return;
+    const targetFolder = window.prompt('Move to folder (relative)', currentPath);
+    if (targetFolder === null) return;
+    await api.moveItems({ items: normalizeOpItems(targetItems), targetFolder, createFolder: window.prompt('New folder name (optional)', '') || '' });
+    setSelected(new Set()); setToast(`Moved ${targetItems.length} items`); await load().catch(() => {});
+  };
+  const renameItem = async (item) => {
+    const renameTo = window.prompt('Rename', item.name);
+    if (!renameTo || renameTo === item.name) return;
+    const parent = item.path.split('/').slice(0, -1).join('/');
+    await api.moveItems({ items: normalizeOpItems([item]), targetFolder: parent, renameTo });
+    setToast('Renamed'); await load().catch(() => {});
+  };
+  const copyItemsToClipboard = (ti) => { setClipboard({ mode: 'copy', items: normalizeOpItems(ti), at: Date.now() }); setToast(`Copied ${ti.length} items`); };
+  const cutItemsToClipboard = (ti) => { setClipboard({ mode: 'cut', items: normalizeOpItems(ti), at: Date.now() }); setToast(`Cut ${ti.length} items`); };
+  const pasteItems = async (targetFolder = currentPath) => {
+    if (!clipboard?.items?.length) return;
+    if (Date.now() - clipboard.at > 600000) { setClipboard(null); setToast('Clipboard expired'); return; }
+    if (clipboard.mode === 'copy') await api.copyItems({ items: clipboard.items, targetFolder });
+    else await api.moveItems({ items: clipboard.items, targetFolder });
+    setToast(`${clipboard.mode === 'copy' ? 'Copied' : 'Moved'} ${clipboard.items.length} items`);
+    if (clipboard.mode === 'cut') setClipboard(null);
+    setSelected(new Set()); await load().catch(() => {});
+  };
+  const tagItems = (ti) => { setSelected(new Set(ti.map((i) => i.path))); setApplyModalOpen(true); };
+  const saveCurrent = () => {
+    const label = window.prompt('Saved search name', filters.q || filters.name || 'Saved');
+    if (!label) return;
+    setSaved((s) => [{ id: Date.now(), label, filters: { ...filters } }, ...s]);
+  };
 
-    const moveItems = async (targetItems) => {
-        if (!targetItems.length) return;
-        const targetFolder = window.prompt('Move to folder path (relative to base)', currentPath);
-        if (targetFolder === null) return;
-        const createFolder = window.prompt('Optional new folder name to create inside target', '') || '';
-        await api.moveItems({ items: normalizeOpItems(targetItems), targetFolder, createFolder });
-        setSelected(new Set());
-        setToast(`Moved ${targetItems.length} item(s)`);
-        await load().catch(() => {});
-    };
-    const renameItem = async (item) => {
-        const renameTo = window.prompt('Rename item', item.name);
-        if (!renameTo || renameTo === item.name) return;
-        const parent = item.path.split('/').slice(0, -1).join('/');
-        await api.moveItems({ items: normalizeOpItems([item]), targetFolder: parent, renameTo });
-        setToast('Renamed successfully');
-        await load().catch(() => {});
-    };
-    const copyItemsToClipboard = (targetItems) => {
-        setClipboard({ mode: 'copy', items: normalizeOpItems(targetItems), at: Date.now() });
-        setToast(`Copied ${targetItems.length} item(s). Paste within 10 minutes.`);
-    };
-    const cutItemsToClipboard = (targetItems) => {
-        setClipboard({ mode: 'cut', items: normalizeOpItems(targetItems), at: Date.now() });
-        setToast(`Cut ${targetItems.length} item(s). Paste within 10 minutes.`);
-    };
-    const pasteItems = async (targetFolder = currentPath) => {
-        if (!clipboard?.items?.length) return;
-        if (Date.now() - clipboard.at > 10 * 60 * 1000) {
-            setClipboard(null);
-            setToast('Clipboard expired');
-            return;
-        }
-        if (clipboard.mode === 'copy') await api.copyItems({ items: clipboard.items, targetFolder });
-        else await api.moveItems({ items: clipboard.items, targetFolder });
-        setToast(`${clipboard.mode === 'copy' ? 'Copied' : 'Moved'} ${clipboard.items.length} item(s)`);
-        if (clipboard.mode === 'cut') setClipboard(null);
-        setSelected(new Set());
-        await load().catch(() => {});
-    };
-    const tagItems = (targetItems) => {
-        setSelected(new Set(targetItems.map((item) => item.path)));
-        setApplyModalOpen(true);
-    };
+  // Missing items dialog
+  const closeMissingDialog = () => { if (!missingDialogBusy) setMissingDialogOpen(false); };
+  const deleteAllMissingItems = async () => {
+    setMissingDialogBusy(true);
+    try { const r = await api.cleanupOrphans(); setToast(`Removed ${r.removed} records`); setMissingDialogOpen(false); setMissingItems([]); setMissingItemsTotal(0); await load().catch(() => {}); }
+    catch (e) { setError(e.message); } finally { setMissingDialogBusy(false); }
+  };
+  const deleteSelectedMissingItems = async (ti) => {
+    if (!ti.length) return;
+    setMissingDialogBusy(true);
+    try {
+      const payload = ti.map((i) => ({ path: i.path, type: (i.itemType || i.type) === 'folder' ? 'folder' : 'file' }));
+      await api.deleteItems(payload);
+      setToast(`Removed ${ti.length} records`);
+      setMissingItems((c) => c.filter((i) => !ti.some((t) => t.path === i.path)));
+      setMissingItemsTotal((c) => Math.max(0, c - ti.length));
+      if (ti.length >= missingItems.length && missingItemsTotal <= missingItems.length) setMissingDialogOpen(false);
+    } catch (e) { setError(e.message); } finally { setMissingDialogBusy(false); }
+  };
+  const copyMissingPaths = async () => { await navigator.clipboard.writeText(missingItems.map((i) => i.path).join('\n')); setToast('Paths copied'); };
+  const exportMissingPaths = () => {
+    const content = missingItems.map((i) => `${(i.itemType || i.type) === 'folder' ? 'folder' : 'file'}\t${i.path}`).join('\n');
+    const blob = new Blob([`type\tpath\n${content}\n`], { type: 'text/tab-separated-values;charset=utf-8' });
+    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'missing-items.tsv'; link.click(); URL.revokeObjectURL(link.href);
+  };
 
-    useEffect(() => {
-        const handler = (event) => {
-            const target = event.target;
-            if (target?.tagName === 'INPUT' && target.type !== 'checkbox' && target.type !== 'radio') return;
-            if (target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return;
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); selectAllByKey(); }
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); setApplyModalOpen(true); }
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') { event.preventDefault(); deselectAll(); }
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') { event.preventDefault(); setToast('copy successfully');copyItemsToClipboard(selectedItemsForOps()); }
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') { event.preventDefault(); setToast('cut successfully');cutItemsToClipboard(selectedItemsForOps()); }
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') { event.preventDefault(); setToast('paste successfully');pasteItems(); }
-            if (event.key === 'Delete') { event.preventDefault(); deleteSelected(); }
-        };
-        window.addEventListener('keydown', handler,true);
-        return () => window.removeEventListener('keydown', handler,true);
-    }, [items, selected, clipboard, currentPath]);
+  // ==================== RENDER ====================
+  if (isTagsPage) return <TagsPage tagsTree={tagsTree} tagSettings={tagSettings} setTagSettings={setTagSettings} onCreateTag={createTag} onUpdateTag={updateTag} onDeleteTag={deleteTag} />;
+  if (isFavoritesPage) return (
+    <>
+      <Navbar />
+      <Toast message={toast} />
+      <FavoritesPage api={api} pageSize={pageSize} selected={selectedPaths} onToggleSelect={toggleSelect} onOpenFolder={navigate}
+        onOpenFile={(file) => { setViewerPath(file.path); const u = new URL(window.location.href); u.searchParams.set('view', file.path); window.history.pushState({ viewing: true, filePath: file.path }, '', u.toString()); }}
+        onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} />
+    </>
+  );
+  if (viewerPath) return (
+    <FullscreenViewer files={previewFiles} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings}
+      onClose={() => { setViewerPath(''); window.history.back(); }}
+      onApplyTags={assignPaths} onRemoveTags={removePaths} onDeleteFile={deleteSingleItem} />
+  );
 
-    const closeMissingDialog = () => {
-        if (missingDialogBusy) return;
-        setMissingDialogOpen(false);
-    };
-    const deleteAllMissingItems = async () => {
-        setMissingDialogBusy(true);
-        try {
-            const cleanup = await api.cleanupOrphans();
-            setToast(`Removed ${cleanup.removed} invalid database record(s)`);
-            setMissingDialogOpen(false);
-            setMissingItems([]);
-            setMissingItemsTotal(0);
-            await load().catch(() => {});
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setMissingDialogBusy(false);
-        }
-    };
-    const deleteSelectedMissingItems = async (targetItems) => {
-        if (!targetItems.length) return;
-        setMissingDialogBusy(true);
-        try {
-            const payload = targetItems.map((item) => ({ path: item.path, type: item.itemType === 'folder' || item.type === 'folder' ? 'folder' : 'file' }));
-            const result = await api.deleteItems(payload);
-            const removed = result.results?.reduce((count, item) => count + (item.removedRecords || (item.status === 'deleted' || item.status === 'db-only' ? 1 : 0)), 0) ?? result.deleted ?? 0;
-            setToast(`Removed ${removed} invalid database record(s)`);
-            setMissingItems((current) => current.filter((item) => !targetItems.some((target) => target.path === item.path)));
-            setMissingItemsTotal((current) => Math.max(0, current - targetItems.length));
-            if (targetItems.length >= missingItems.length && missingItemsTotal <= missingItems.length) setMissingDialogOpen(false);
-            await load().catch(() => {});
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setMissingDialogBusy(false);
-        }
-    };
-    const copyMissingPaths = async () => {
-        const paths = missingItems.map((item) => item.path).join('\n');
-        await navigator.clipboard.writeText(paths);
-        setToast('Missing item paths copied');
-    };
-    const exportMissingPaths = () => {
-        const content = missingItems.map((item) => `${item.itemType === 'folder' || item.type === 'folder' ? 'folder' : 'file'}\t${item.path}`).join('\n');
-        const blob = new Blob([`type\tpath\n${content}\n`], { type: 'text/tab-separated-values;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = 'missing-items.tsv';
-        link.click();
-        URL.revokeObjectURL(url);
-    };
+  return (
+    <div className="min-h-screen bg-surface-0">
+      <Navbar />
+      <Toast message={toast} />
 
-    if (isTagsPage) {
-        return <TagsPage tagsTree={tagsTree} tagSettings={tagSettings} setTagSettings={setTagSettings} onCreateTag={createTag} onUpdateTag={updateTag} onDeleteTag={deleteTag} />;
-    }
+      {/* search bar */}
+      <div className="pt-6 pb-2">
+        <SearchBar tagsTree={tagsTree} filters={filters} setFilters={setFilters} onSearch={runSearch} onClear={clearFilters}
+          history={history} saved={saved} onSave={saveCurrent} />
+      </div>
 
-    if (isFavoritesPage) {
-        return <><Toast message={toast} /><FavoritesPage api={api} pageSize={pageSize} selected={selected} onToggleSelect={toggleSelect} onOpenFolder={navigate} onOpenFile={(file) => { setViewerPath(file.path); const u = new URL(window.location.href); u.searchParams.set('view', file.path); window.history.pushState({ viewing: true, filePath: file.path }, '', u.toString()); }} onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} /></>;
-    }
-
-    if (viewerPath) {
-        return <FullscreenViewer files={previewFiles} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => { setViewerPath(''); window.history.back(); }} onApplyTags={assignPaths} onRemoveTags={removePaths} onDeleteFile={deleteSingleItem} />;
-    }
-
-    return (
-        <main>
-            <header className="app-header">
-                <div>
-                    <h1>LAN Media Browser</h1>
-                    <p>Explorer + tags + search for local images/videos</p>
-                </div>
-                <div className="header-actions"><a className="button-link" href={`/search?${new URLSearchParams({ itemType: 'image', page: 1, pageSize, sortBy, sortDir })}`}>All Images</a><a className="button-link" href={`/search?${new URLSearchParams({ itemType: 'video', page: 1, pageSize, sortBy, sortDir })}`}>All Videos</a><a className="button-link" href="/favorites">Favorites ★</a><a className="button-link" href="/tags">Manage Tags</a><button onClick={() => setCreateModalOpen(true)}>Create Tag</button></div>
-            </header>
-            <SearchPanel tagsTree={tagsTree} filters={filters} setFilters={setFilters} onSearch={runSearch} onClear={clearFilters} />
-            {isSearchPage ? (
-                <section className="active-filters">
-                    <strong>Search results</strong>
-                    <span>{total} result(s)</span>
-                    {(url.get('q') || url.get('name')) && <button className="filter-chip" onClick={() => { const next = new URLSearchParams(window.location.search); next.delete('q'); next.delete('name'); window.location.href = `/search?${next}`; }}>Query: {url.get('q') || url.get('name')} ×</button>}
-                    <span>Mode: {(url.get('tagMode') || 'and').toUpperCase()}</span>
-                    <span>Tags: {url.get('tags') || 'Any'}</span>
-                </section>
-            ) : (
-                <Breadcrumbs path={currentPath} onNavigate={navigate} pageSize={pageSize} />
+      {/* quick filters + breadcrumbs */}
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6">
+        {isSearchPage ? (
+          <div className="flex items-center gap-2 py-2 text-xs text-text-muted flex-wrap">
+            <span className="font-medium text-text-secondary">Search results</span>
+            <span>{total} result(s)</span>
+            {(url.get('q') || url.get('name')) && (
+              <button className="px-2 py-0.5 rounded-full bg-surface-3 border border-border text-xs hover:text-text-primary"
+                onClick={() => { const n = new URLSearchParams(window.location.search); n.delete('q'); n.delete('name'); window.location.href = `/search?${n}`; }}>
+                Query: {url.get('q') || url.get('name')} ×
+              </button>
             )}
-            {error && <div className="error">{error}</div>}
-            <div className="toolbar">
-                <label>Page size <input type="number" min="1" max="200" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} /></label>
-                <label>Sort by <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1); }}><option value="name">Name</option><option value="createdAt">Created time</option><option value="modifiedAt">Modified time</option><option value="size">File size</option></select></label>
-                <label>Direction <select value={sortDir} onChange={(e) => { setSortDir(e.target.value); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
-                {!!selected.size && <><button className="secondary" onClick={selectAll}>Select All</button><button className="secondary" onClick={deselectAll}>Deselect All</button><button className="secondary" onClick={() => moveItems(selectedItemsForOps())}>Move selected</button><button className="secondary" onClick={() => copyItemsToClipboard(selectedItemsForOps())}>Copy</button><button className="secondary" onClick={() => cutItemsToClipboard(selectedItemsForOps())}>Cut</button><button className="danger" onClick={deleteSelected}>Delete selected</button></>}
-                {clipboard?.items?.length > 0 && <button className="secondary" onClick={() => pasteItems()}>Paste here ({clipboard.mode})</button>}
-                <button className="toolbar-push" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>Tag selected files ({selected.size})</button>
-            </div>
-            <FileGrid items={items} selectedPaths={selected} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode} onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect} onOpenFile={(file) => { setViewerPath(file.path); const u = new URL(window.location.href); u.searchParams.set('view', file.path); window.history.pushState({ viewing: true, filePath: file.path }, '', u.toString()); }} onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} onRenameItem={renameItem} onMoveItems={moveItems} onCopyItems={copyItemsToClipboard} onCutItems={cutItemsToClipboard} onPasteItems={pasteItems} onTagItems={tagItems} pageSize={pageSize} />
-            <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
-            <ApplyTagsModal open={applyModalOpen} selectedCount={selected.size} tagsTree={tagsTree} tagSettings={tagSettings} onClose={() => setApplyModalOpen(false)} onApply={assignSelected} onRemove={removeSelected} onCreateTag={createTag} analysis={tagAnalysis} />
-            <CreateTagModal open={createModalOpen} tagsTree={tagsTree} onClose={() => setCreateModalOpen(false)} onCreateTag={createTag} />
-            <MissingItemsDialog open={missingDialogOpen} items={missingItems} totalCount={missingItemsTotal} busy={missingDialogBusy} onClose={closeMissingDialog} onDeleteAll={deleteAllMissingItems} onDeleteSelected={deleteSelectedMissingItems} onCopyAll={copyMissingPaths} onExportList={exportMissingPaths} />
-            <Toast message={toast} />
-        </main>
-    );
+            <span>Mode: {(url.get('tagMode') || 'and').toUpperCase()}</span>
+            <button className="ml-auto btn-base btn-ghost text-xs" onClick={saveCurrent}>Save search</button>
+            <button className="btn-base btn-ghost text-xs" onClick={clearFilters}>Clear</button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3 py-2">
+            <BreadcrumbsWrap path={currentPath} onNavigate={navigate} pageSize={pageSize} />
+            <QuickFilters type={filters.itemType} setType={(t) => setFilters((f) => ({ ...f, itemType: t }))}
+              sortBy={sortBy} setSortBy={setSortBy} sortDir={sortDir} setSortDir={setSortDir} />
+          </div>
+        )}
+
+        {/* toolbar (selection actions) */}
+        {(selected.size > 0 || clipboard?.items?.length > 0) && (
+          <div className="flex items-center gap-2 py-2 flex-wrap">
+            {!!selected.size && (
+              <>
+                <button className="btn-base btn-ghost text-xs" onClick={selectAll}>Select All</button>
+                <button className="btn-base btn-ghost text-xs" onClick={deselectAll}>Deselect</button>
+                <button className="btn-base btn-ghost text-xs" onClick={() => moveItems(selectedItemsForOps())}>Move</button>
+                <button className="btn-base btn-ghost text-xs" onClick={() => copyItemsToClipboard(selectedItemsForOps())}>Copy</button>
+                <button className="btn-base btn-ghost text-xs" onClick={() => cutItemsToClipboard(selectedItemsForOps())}>Cut</button>
+                <button className="btn-base text-xs bg-danger/20 text-danger hover:bg-danger/30 rounded-xl" onClick={deleteSelected}>Delete</button>
+              </>
+            )}
+            {clipboard?.items?.length > 0 && (
+              <button className="btn-base btn-primary text-xs" onClick={() => pasteItems()}>Paste ({clipboard.mode})</button>
+            )}
+            <button className="btn-base btn-primary text-xs ml-auto" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>
+              Tag ({selected.size})
+            </button>
+          </div>
+        )}
+
+        {error && <div className="px-3 py-2 mb-3 text-sm rounded-xl bg-danger/10 border border-danger/20 text-danger">{error}</div>}
+
+        {/* content grid */}
+        <div className="py-4">
+          <ContentGrid items={items} selectedPaths={selectedPaths} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode}
+            onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect}
+            onOpenFile={(file) => { setViewerPath(file.path); const u = new URL(window.location.href); u.searchParams.set('view', file.path); window.history.pushState({ viewing: true, filePath: file.path }, '', u.toString()); }}
+            onToggleFavorite={toggleFavorite} pageSize={pageSize} />
+        </div>
+
+        {/* pagination */}
+        <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
+      </div>
+
+      {/* modals */}
+      <ApplyTagsModal open={applyModalOpen} selectedCount={selected.size} tagsTree={tagsTree} tagSettings={tagSettings}
+        onClose={() => setApplyModalOpen(false)} onApply={assignSelected} onRemove={removeSelected} onCreateTag={createTag} analysis={tagAnalysis} />
+      <CreateTagModal open={createModalOpen} tagsTree={tagsTree} onClose={() => setCreateModalOpen(false)} onCreateTag={createTag} />
+
+      {/* missing items modal */}
+      <Modal open={missingDialogOpen} onClose={closeMissingDialog} title="Missing Items" maxWidth="max-w-2xl">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-sm text-text-muted">
+            <strong>{missingItemsTotal} missing items</strong>
+            <span>{missingItems.length} shown</span>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button className="btn-base btn-ghost text-xs" onClick={copyMissingPaths} disabled={!missingItems.length}>Copy paths</button>
+            <button className="btn-base btn-ghost text-xs" onClick={exportMissingPaths} disabled={!missingItems.length}>Export</button>
+          </div>
+          <div className="max-h-[40vh] overflow-y-auto space-y-1">
+            {missingItems.slice(0, MISSING_ITEMS_PREVIEW_LIMIT).map((item) => (
+              <div key={item.path} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-surface-3 text-xs text-text-secondary">
+                <span>{(item.itemType || item.type) === 'folder' ? '📁' : '📄'}</span>
+                <code className="text-text-primary flex-1 truncate">{item.path}</code>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-base bg-danger/20 text-danger hover:bg-danger/30 rounded-xl text-xs" onClick={deleteAllMissingItems} disabled={missingDialogBusy}>Delete All</button>
+            <button className="btn-base btn-ghost text-xs" onClick={closeMissingDialog}>Close</button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// inline breadcrumbs
+function BreadcrumbsWrap({ path, onNavigate, pageSize }) {
+  const parts = path ? path.split('/').filter(Boolean) : [];
+  const crumbs = [{ label: 'Root', path: '' }, ...parts.map((p, i) => ({ label: p, path: parts.slice(0, i + 1).join('/') }))];
+  return (
+    <nav className="flex items-center gap-1 text-sm text-text-muted">
+      {crumbs.map((c, i) => (
+        <span key={c.path || 'root'} className="flex items-center gap-1">
+          <button onClick={() => onNavigate(c.path)} className="hover:text-text-primary transition-colors text-xs">{c.label}</button>
+          {i < crumbs.length - 1 && <span className="text-text-muted">/</span>}
+        </span>
+      ))}
+    </nav>
+  );
 }

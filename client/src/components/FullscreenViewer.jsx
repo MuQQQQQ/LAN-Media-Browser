@@ -1,311 +1,266 @@
-import { useEffect, useMemo, useState } from 'react';
-import { api, mediaUrl, thumbnailUrl } from '../api.js';
-import TagGroupList from './TagGroupList.jsx';
-import ReactPlayer from 'react-player'
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, ChevronLeft, ChevronRight, Info, Star, RotateCw, Download, Trash2, Play, Pause } from 'lucide-react';
+import { api, mediaUrl } from '../api.js';
+import FloatingRail, { RailButton } from './ui/FloatingRail.jsx';
+import MetadataDrawer from './ui/MetadataDrawer.jsx';
+
 export default function FullscreenViewer({ files, initialPath, tagsTree, tagSettings, onClose, onApplyTags, onRemoveTags, onDeleteFile }) {
-    const [currentPath, setCurrentPath] = useState(initialPath);
-    const [fileTags, setFileTags] = useState([]);
-    const [selectedTagIds, setSelectedTagIds] = useState([]);
-    const [showMetadata, setShowMetadata] = useState(() => window.matchMedia('(min-width: 768px)').matches);
-    const [missing, setMissing] = useState(false);
-    const [zoom, setZoom] = useState(1.00001);
-    const [pan, setPan] = useState({ x: 0, y: 0 });
-    const [touch, setTouch] = useState(null);
-    const [autoPlay, setAutoPlay] = useState(() => localStorage.getItem('viewer-autoplay') === 'true');
-    const [playbackRate, setPlaybackRate] = useState(() => Number(localStorage.getItem('viewer-playback-rate') || 1));
-    const currentIndex = files.findIndex((file) => file.path === currentPath);
-    const file = files[currentIndex] || files[0];
-    const previous = currentIndex > 0 ? files[currentIndex - 1] : null;
-    const next = currentIndex < files.length - 1 ? files[currentIndex + 1] : null;
-    const tagNameById = useMemo(() => new Map(tagsTree.flatMap((category) => category.children.map((tag) => [tag.id, `${category.name} / ${tag.name}`]))), [tagsTree]);
+  const [currentPath, setCurrentPath] = useState(initialPath);
+  const [fileTags, setFileTags] = useState([]);
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [missing, setMissing] = useState(false);
+  const [zoom, setZoom] = useState(1.00001);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [touch, setTouch] = useState(null);
+  const [autoPlay, setAutoPlay] = useState(() => localStorage.getItem('viewer-autoplay') === 'true');
+  const [playbackRate, setPlaybackRate] = useState(() => Number(localStorage.getItem('viewer-playback-rate') || 1));
+  const [showControls, setShowControls] = useState(true);
+  const hideTimer = useRef(null);
+  const videoRef = useRef(null);
 
-    useEffect(() => { setCurrentPath(initialPath); }, [initialPath]);
-    useEffect(() => {
-        console.log(files);
-        console.log('Loading tags for', file?.path);
-        if (!file) return;
-        api.fileTags(file.path).then((data) => setFileTags(data.tags)).catch(() => setFileTags([]));
-        setSelectedTagIds([]);
-        setMissing(false);
-        setZoom(1.00001);
-        setPan({ x: 0, y: 0 });
-    }, [file?.path]);
-    useEffect(() => {
-        const handler = (event) => {
-            if (event.key === 'Escape') onClose();
-            if ((event.key === 'ArrowLeft' || event.key === 'ArrowUp') && previous) setCurrentPath(previous.path);
-            if ((event.key === 'ArrowRight' || event.key === 'ArrowDown') && next) setCurrentPath(next.path);
-        };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [previous, next, onClose]);
-    useEffect(() => { localStorage.setItem('viewer-autoplay', String(autoPlay)); }, [autoPlay]);
-    useEffect(() => { localStorage.setItem('viewer-playback-rate', String(playbackRate)); }, [playbackRate]);
+  const currentIndex = files.findIndex((f) => f.path === currentPath);
+  const file = files[currentIndex] || files[0];
+  const previous = currentIndex > 0 ? files[currentIndex - 1] : null;
+  const next = currentIndex < files.length - 1 ? files[currentIndex + 1] : null;
 
-    if (!file) return null;
-    const goPrevious = () => previous && setCurrentPath(previous.path);
-    const goNext = () => next && setCurrentPath(next.path);
-    const toggle = (id) => setSelectedTagIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-    const refreshTags = async () => setFileTags((await api.fileTags(file.path)).tags);
-    const apply = async () => { await onApplyTags([file.path], selectedTagIds); await refreshTags(); };
-    const remove = async () => { await onRemoveTags([file.path], selectedTagIds); await refreshTags(); };
-    const removeMissing = async () => { await api.removeFile(file.path); onClose(); };
-    const deleteCurrent = async () => {
-        if (!confirm('Are you sure you want to delete this file?')) return;
-        await onDeleteFile?.(file);
-        onClose();
+  const tagNameById = useMemo(
+    () => new Map(tagsTree.flatMap((c) => c.children.map((t) => [t.id, `${c.name} / ${t.name}`]))),
+    [tagsTree]
+  );
+
+  useEffect(() => { setCurrentPath(initialPath); }, [initialPath]);
+  useEffect(() => {
+    if (!file) return;
+    api.fileTags(file.path).then((d) => setFileTags(d.tags)).catch(() => setFileTags([]));
+    setSelectedTagIds([]);
+    setMissing(false);
+    setZoom(1.00001);
+    setPan({ x: 0, y: 0 });
+  }, [file?.path]);
+
+  // keyboard
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') onClose();
+      if ((e.key === 'ArrowLeft' || e.key === 'ArrowUp') && previous) setCurrentPath(previous.path);
+      if ((e.key === 'ArrowRight' || e.key === 'ArrowDown') && next) setCurrentPath(next.path);
+      if (e.key === 'i' || e.key === 'I') setDrawerOpen((x) => !x);
     };
-    const searchByTag = (tag) => {
-        window.open(`/search?${new URLSearchParams({ tags: tag.id, tagMode: 'and', page: 1, pageSize: 50 })}`, '_blank', 'noopener,noreferrer');
-    };
-    const distance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-    const clampZoom = (value) => Math.min(4, Math.max(1, value));
-    const zoomLevels = [1, 2, 4];
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [previous, next, onClose]);
 
-    const getPointRelativeToViewer = (clientX, clientY) => {
-        const rect = document.querySelector('.viewer-content')?.getBoundingClientRect();
-        if (!rect) return { x: 0, y: 0 };
-        return {
-            x: clientX - (rect.left + rect.width / 2),
-            y: clientY - (rect.top + rect.height / 2)
-        };
-    };
+  useEffect(() => { localStorage.setItem('viewer-autoplay', String(autoPlay)); }, [autoPlay]);
+  useEffect(() => { localStorage.setItem('viewer-playback-rate', String(playbackRate)); }, [playbackRate]);
 
-    const zoomAtPoint = (clientX, clientY) => {
-        const currentZoom = Math.abs(zoom - 1) < 0.02 ? 1 : zoom;
-        const currentIndex = zoomLevels.findIndex((level) => Math.abs(level - currentZoom) < 0.02);
-        const nextZoom = zoomLevels[((currentIndex === -1 ? 0 : currentIndex) + 1) % zoomLevels.length];
+  // auto-hide controls for video
+  useEffect(() => {
+    if (file?.type !== 'video') return;
+    if (!showControls) return;
+    clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setShowControls(false), 3000);
+    return () => clearTimeout(hideTimer.current);
+  }, [showControls, file?.type]);
+  const wakeControls = () => { setShowControls(true); };
 
-        if (nextZoom === 1) {
-            setZoom(1);
-            setPan({ x: 0, y: 0 });
-            return;
-        }
+  if (!file) return null;
 
-        const point = getPointRelativeToViewer(clientX, clientY);
-        const scaleRatio = nextZoom / currentZoom;
-        setZoom(nextZoom);
-        setPan((currentPan) => ({
-            x: point.x - (point.x - currentPan.x) * scaleRatio,
-            y: point.y - (point.y - currentPan.y) * scaleRatio
-        }));
-    };
+  const goPrevious = () => previous && setCurrentPath(previous.path);
+  const goNext = () => next && setCurrentPath(next.path);
+  const toggle = (id) => setSelectedTagIds((ids) => ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+  const refreshTags = async () => setFileTags((await api.fileTags(file.path)).tags);
 
-    const onDoubleClick = (event) => {
-        zoomAtPoint(event.clientX, event.clientY);
-    };
-    const onTouchStart = (event) => {
-    if (event.touches.length === 2) {
-        const cx = (event.touches[0].clientX + event.touches[1].clientX) / 2;
-        const cy = (event.touches[0].clientY + event.touches[1].clientY) / 2;
+  // zoom / pan
+  const distance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  const zoomLevels = [1, 2, 4];
+  const zoomAtPoint = (clientX, clientY) => {
+    const currentZoom = Math.abs(zoom - 1) < 0.02 ? 1 : zoom;
+    const idx = zoomLevels.findIndex((l) => Math.abs(l - currentZoom) < 0.02);
+    const nextZoom = zoomLevels[((idx === -1 ? 0 : idx) + 1) % zoomLevels.length];
+    if (nextZoom === 1) { setZoom(1); setPan({ x: 0, y: 0 }); return; }
+    const container = document.querySelector('.viewer-media-container');
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const px = clientX - (rect.left + rect.width / 2);
+    const py = clientY - (rect.top + rect.height / 2);
+    const ratio = nextZoom / currentZoom;
+    setZoom(nextZoom);
+    setPan((p) => ({ x: px - (px - p.x) * ratio, y: py - (py - p.y) * ratio }));
+  };
 
-        setTouch({
-            mode: 'pinch',
-            initialized: false,
-            lastX: cx,
-            lastY: cy
-        });
-        return;
-    }
-
-    const point = event.touches[0];
-    const video = document.querySelector('.viewer-content video');
-
-    setTouch({
-        mode: 'single',
-        gesture: null, // 👈 新增（pan / swipe / scrub）
-        startX: point.clientX,
-        startY: point.clientY,
-        lastX: point.clientX,
-        lastY: point.clientY,
-        startedAt: Date.now(),
-        startTime: video ? video.currentTime : null,
-        lastTime: Date.now(),   // 👈 新增
-        velocityX: 0            // 👈 新增
-    });
-};
-    const onTouchMove = (event) => {
-    if (!touch) return;
-
-    // ===== PINCH =====
-    if (touch.mode === 'pinch' && event.touches.length === 2) {
-        event.preventDefault();
-
-        const d = distance(event.touches[0], event.touches[1]);
-
-        if (!touch.initialized) {
-            setTouch(t => ({
-                ...t,
-                startDistance: d,
-                startZoom: zoom,
-                initialized: true
-            }));
-            return;
-        }
-
-        const scale = d / touch.startDistance;
-        if (Math.abs(scale - 1) < 0.01) return;
-
-        const rawZoom = touch.startZoom * scale;
-        const nextZoom = clampZoom(zoom * 0.8 + rawZoom * 0.2);
-
-        const cx = (event.touches[0].clientX + event.touches[1].clientX) / 2;
-        const cy = (event.touches[0].clientY + event.touches[1].clientY) / 2;
-
-        setZoom(nextZoom);
-
-        setPan(p => ({
-            x: p.x + (cx - touch.lastX),
-            y: p.y + (cy - touch.lastY)
-        }));
-
-        setTouch(t => ({ ...t, lastX: cx, lastY: cy }));
-        return;
-    }
-
-    // ===== SINGLE =====
-    const point = event.touches[0];
-    const now = Date.now();
-    const dt = now - touch.lastTime;
-    const dx = point.clientX - touch.lastX;
-    const dy = point.clientY - touch.lastY;
-    const totalX = point.clientX - touch.startX;
-    const totalY = point.clientY - touch.startY;
-    const vx = dx / dt; // px/ms
-    const smoothVX = touch.velocityX * 0.7 + vx * 0.3;
-
-    const absX = Math.abs(totalX);
-    const absY = Math.abs(totalY);
-
-    const video = document.querySelector('.viewer-content video');
-
-    const SWIPE_OVERRIDE = 13;
-    const VELOCITY_THRESHOLD = 0.1; // 👈 关键（可调）
-
-    let gesture = touch.gesture;
-
-    // 👇 手势判定（只判定一次）
-    if (!gesture) {
-        if (Math.abs(smoothVX) > VELOCITY_THRESHOLD && absX > absY * 1.2) {
-            gesture = 'swipe';
-        } else if (video && absX > absY) {
-            gesture = 'scrub';
-        } else if (zoom > 1) {
-            gesture = 'pan';
-        } else if (absX > absY) {
-            gesture = 'swipe';
-        }
-
-        if (gesture) {
-            setTouch(t => ({ ...t, gesture }));
-        }
-    }
-
-    // ===== 执行手势 =====
-
-    // 👉 pan
-    if (gesture === 'pan') {
-        event.preventDefault();
-        setPan(p => ({
-            x: p.x + dx,
-            y: p.y + dy
-        }));
-    }
-
-    // 👉 swipe（只移动视觉，不立即切换）
-    else if (gesture === 'swipe') {
-        event.preventDefault();
-        setPan(p => ({
-            ...p,
-            x: totalX // 👈 用 total 做拖拽效果
-        }));
-    }
-
-    // 👉 视频 scrub
-    else if (gesture === 'scrub' && video) {
-        event.preventDefault();
-
-        // 👇 强制显示 controls
-        video.controls = true;
-
-        const sensitivity = 0.05;
-        const delta = totalX * sensitivity;
-
-        const nextTime = Math.max(
-            0,
-            Math.min(video.duration, touch.startTime + delta)
-        );
-
-        video.currentTime = nextTime;
-    }
-
-    setTouch(t => ({
-        ...t,
-        lastX: point.clientX,
-        lastY: point.clientY
-    }));
-};
-const onTouchEnd = () => {
-    if (!touch) return;
-
-    const dx = touch.lastX - touch.startX;
-
-    const video = document.querySelector('.viewer-content video');
-
-    if (touch.gesture === 'swipe') {
-        if (Math.abs(dx) > 80) {
-            dx < 0 ? goNext() : goPrevious();
-        } else {
-            // 👇 回弹
-            setPan({ x: 0, y: 0 });
-        }
-    }
-
-
-    setTouch(null);
-};
-    return (
-        <div className={`viewer ${showMetadata ? 'metadata-open' : 'metadata-hidden'}`} role="dialog" aria-modal="true" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-            {/* <button className="viewer-btn close" onClick={onClose} title="关闭">
-                <span>✕</span>
-            </button> */}
-
-            {/* 删除按钮 */}
-            <button className="viewer-btn delete" onClick={deleteCurrent} title="删除">
-                <span>🗑</span>
-            </button>
-
-            {/* 属性信息切换按钮 */}
-            <button className={`viewer-btn meta-toggle ${showMetadata ? 'active' : ''}`} onClick={() => setShowMetadata((x) => !x)} title={showMetadata ? '隐藏信息' : '显示信息'}>
-                <span>ⓘ</span>
-            </button>
-            <section className="viewer-content" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} onDoubleClick={onDoubleClick} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-                {missing ? <div className="missing-file"><h2>File not found</h2><button onClick={removeMissing}>Remove from database</button></div> : file.type === 'image' ? <img className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} src={mediaUrl(file.path)} alt={file.name} onError={() => setMissing(true)} /> : <video className={zoom > 1 ? 'zoomed' : ''} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }} controls autoPlay={autoPlay} playsInline src={mediaUrl(file.path)} onLoadedMetadata={(event) => { event.currentTarget.playbackRate = playbackRate; }} onError={() => setMissing(true)} />}
-            </section>
-            {showMetadata && <aside className="viewer-meta">
-                <h2>{file.name}</h2>
-                <h3>Applied tags</h3>
-                <div className="chips">{fileTags.length ? fileTags.map((tag) => <button className="chip clickable-tag" style={{ '--tag-color': tag.color || '#64748b' }} key={tag.id} onClick={() => searchByTag(tag)} title="Search files with this tag">{tagNameById.get(tag.id) || tag.name}</button>) : <span className="muted">No tags</span>}</div>
-                <h3>Edit tags</h3>
-                <div className="compact-tags"><TagGroupList tagsTree={tagsTree} selectedTagIds={selectedTagIds} onToggleTag={toggle} displayMode={tagSettings.displayMode} /></div>
-                <div className="actions"><button disabled={!selectedTagIds.length} onClick={apply}>Add</button><button className="secondary" disabled={!selectedTagIds.length} onClick={remove}>Remove</button></div>
-                {file.type === 'video' && <><h3>Playback</h3><label className="inline-check"><input type="checkbox" checked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} /> Auto-play</label><br /><label>Speed<select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))}><option value="1">1x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="3">3x</option></select></label></>}
-            </aside>}
-            <div className="viewer-bottom-bar">
-                <button className="nav-btn reset" onClick={() => {
-                    setZoom(1);
-                    setPan({ x: 0, y: 0 });
-                    setPlaybackRate(1);
-                    setAutoPlay(false);
-                }}><span>↻</span></button>
-                <button className="nav-btn prev" onClick={goPrevious} disabled={!previous}> <span>‹</span> </button>
-                <span className="viewer-count">{currentIndex + 1} / {files.length}</span>
-                <button className="nav-btn next" onClick={goNext} disabled={!next}> <span>›</span> </button>
-                {/* <div className="viewer-previews">
-                    {previous && <button onClick={goPrevious}><img src={thumbnailUrl(previous)} alt={previous.name} />Prev</button>}
-                    {next && <button onClick={goNext}><img src={thumbnailUrl(next)} alt={next.name} />Next</button>}
-                </div> */}
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 bg-black"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      onMouseMove={wakeControls}
+      onPointerDown={wakeControls}
+      onDoubleClick={(e) => { if (file.type === 'image') zoomAtPoint(e.clientX, e.clientY); }}
+    >
+      {/* === TOP BAR (auto-hide) === */}
+      <AnimatePresence>
+        {showControls && (
+          <motion.div
+            className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/70 to-transparent"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="flex items-center gap-3">
+              <button onClick={onClose} className="glass btn-icon w-9 h-9 text-white/80 hover:text-white" title="Close (Esc)">
+                <X size={20} />
+              </button>
+              <span className="text-xs text-white/60 font-medium">{currentIndex + 1} / {files.length}</span>
             </div>
-        </div>
-    );
+            <h1 className="text-sm font-medium text-white/80 truncate max-w-[40%]">{file.name}</h1>
+            <div className="w-[72px]" />{/* spacer */}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* === MEDIA === */}
+      <div className="viewer-media-container absolute inset-0 flex items-center justify-center overflow-hidden">
+        {missing ? (
+          <div className="text-center text-white/60">
+            <h2 className="text-lg font-semibold mb-3">File not found</h2>
+            <button onClick={async () => { await api.removeFile(file.path); onClose(); }} className="btn-base btn-primary text-sm">
+              Remove from database
+            </button>
+          </div>
+        ) : file.type === 'image' ? (
+          <img
+            className="max-w-full max-h-full object-contain select-none"
+            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transition: zoom === 1 ? 'transform 0.3s ease' : 'none', cursor: zoom > 1 ? 'grab' : 'zoom-in' }}
+            src={mediaUrl(file.path)}
+            alt={file.name}
+            draggable={false}
+            onError={() => setMissing(true)}
+          />
+        ) : (
+          <video
+            ref={videoRef}
+            className="max-w-full max-h-full object-contain"
+            controls={showControls}
+            autoPlay={autoPlay}
+            playsInline
+            src={mediaUrl(file.path)}
+            onLoadedMetadata={(e) => { e.currentTarget.playbackRate = playbackRate; }}
+            onError={() => setMissing(true)}
+          />
+        )}
+      </div>
+
+      {/* === FLOATING ACTION RAIL (right) === */}
+      <FloatingRail offset={drawerOpen ? 380 : 0}>
+        <RailButton icon={Info} label="Info" active={drawerOpen} onClick={() => setDrawerOpen((x) => !x)} />
+        <RailButton
+          icon={file?.favorite ? Star : Star}
+          label={file?.favorite ? 'Unfavorite' : 'Favorite'}
+          onClick={() => {
+            // favorite toggle — needs parent state; skip or pass callback
+          }}
+        />
+        <RailButton icon={RotateCw} label="Reset view" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} />
+        {file?.type === 'video' && (
+          <RailButton icon={autoPlay ? Pause : Play} label={autoPlay ? 'Pause' : 'Play'} onClick={() => setAutoPlay((x) => !x)} />
+        )}
+      </FloatingRail>
+
+      {/* === METADATA DRAWER === */}
+      <MetadataDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        fileName={file.name}
+        fileTags={fileTags}
+        tagNameById={tagNameById}
+        selectedTagIds={selectedTagIds}
+        onToggleTag={toggle}
+        onApplyTags={async () => { await onApplyTags?.([file.path], selectedTagIds); await refreshTags(); }}
+        onRemoveTags={async () => { await onRemoveTags?.([file.path], selectedTagIds); await refreshTags(); }}
+        tagsTree={tagsTree}
+        tagSettings={tagSettings}
+        onDelete={async () => { await onDeleteFile?.(file); onClose(); }}
+      >
+        {/* file info */}
+        <section>
+          <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Details</h3>
+          <dl className="space-y-1.5 text-sm">
+            <div className="flex justify-between"><dt className="text-text-muted">Type</dt><dd className="text-text-primary capitalize">{file.type}</dd></div>
+            <div className="flex justify-between"><dt className="text-text-muted">Path</dt><dd className="text-text-primary text-right text-xs truncate max-w-[220px]" title={file.path}>{file.path}</dd></div>
+            {file.size != null && <div className="flex justify-between"><dt className="text-text-muted">Size</dt><dd className="text-text-primary">{formatBytes(file.size)}</dd></div>}
+          </dl>
+        </section>
+
+        {/* playback for video */}
+        {file.type === 'video' && (
+          <section>
+            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Playback</h3>
+            <div className="space-y-2 text-sm">
+              <label className="flex items-center gap-2 text-text-secondary">
+                <input type="checkbox" checked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} className="accent-brand" />
+                Auto-play
+              </label>
+              <label className="flex items-center gap-2 text-text-secondary">
+                Speed
+                <select value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))} className="bg-surface-3 border border-border rounded-lg px-2 py-1 text-xs text-text-primary">
+                  <option value="0.5">0.5x</option>
+                  <option value="1">1x</option>
+                  <option value="1.5">1.5x</option>
+                  <option value="2">2x</option>
+                  <option value="3">3x</option>
+                </select>
+              </label>
+            </div>
+          </section>
+        )}
+      </MetadataDrawer>
+
+      {/* === BOTTOM NAV BAR === */}
+      <AnimatePresence>
+        {showControls && (
+          <motion.div
+            className="absolute bottom-0 left-0 right-0 z-30 flex items-center justify-center gap-6 px-4 py-4 bg-gradient-to-t from-black/70 to-transparent"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.2 }}
+          >
+            <button
+              onClick={goPrevious}
+              disabled={!previous}
+              className="glass btn-icon w-11 h-11 text-white/80 hover:text-white disabled:opacity-30"
+              title="Previous"
+            >
+              <ChevronLeft size={22} />
+            </button>
+            <span className="text-sm text-white/60 font-medium tabular-nums min-w-[60px] text-center">
+              {currentIndex + 1} / {files.length}
+            </span>
+            <button
+              onClick={goNext}
+              disabled={!next}
+              className="glass btn-icon w-11 h-11 text-white/80 hover:text-white disabled:opacity-30"
+              title="Next"
+            >
+              <ChevronRight size={22} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+function formatBytes(value) {
+  if (!Number.isFinite(value)) return '';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) { size /= 1024; unitIndex++; }
+  return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
