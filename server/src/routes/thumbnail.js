@@ -48,6 +48,36 @@ async function exists(filePath) {
 async function ensureDirs() {
     await fs.mkdir(path.join(config.thumbnailsRoot, 'images'), { recursive: true });
     await fs.mkdir(path.join(config.thumbnailsRoot, 'videos'), { recursive: true });
+    await fs.mkdir(path.join(config.thumbnailsRoot, 'sprites'), { recursive: true });
+}
+
+function probeDuration(absolutePath) {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(absolutePath, (err, metadata) => {
+            if (err) return reject(err);
+            resolve(metadata.format.duration || 0);
+        });
+    });
+}
+
+// ── sprite density presets ──
+// 0 = light, 1 = normal, 2 = dense, 3 = ultra, 4 = extreme
+const DENSITY = 2; // 默认 dense
+
+const PRESETS = [
+    { cols: [5, 5, 6, 8], rows: [4, 4, 6, 8], maxFrames: [20, 25, 36, 64], name: 'light' },
+    { cols: [6, 6, 8, 10], rows: [5, 6, 8, 10], maxFrames: [30, 36, 64, 100], name: 'normal' },
+    { cols: [7, 8, 10, 12], rows: [6, 8, 10, 12], maxFrames: [42, 64, 100, 144], name: 'dense' },
+    { cols: [9, 10, 12, 14], rows: [8, 10, 12, 14], maxFrames: [72, 100, 144, 196], name: 'ultra' },    // 更密集
+    { cols: [12, 14, 16, 18], rows: [10, 12, 14, 16], maxFrames: [120, 168, 224, 288], name: 'extreme' } // 极密集
+];
+
+function spriteParams(duration) {
+    const p = PRESETS[DENSITY] || PRESETS[1];
+    const tier = duration <= 60 ? 0 : duration <= 600 ? 1 : duration <= 1800 ? 2 : 3;
+    const totalFrames = p.maxFrames[tier];
+    const minInterval = tier === 3 ? 10 : (tier === 2 ? 5 : 0);
+    return { cols: p.cols[tier], rows: p.rows[tier], totalFrames, minInterval, density: p.name };
 }
 
 async function sendThumbnail(res, thumbnailPath) {
@@ -81,9 +111,15 @@ thumbnailRouter.get('/video', async (req, res, next) => {
         if (!(await exists(output))) {
             await runLimited(`video:${relativePath}`, async () => {
                 if (await exists(output)) return;
+                // pick a random frame within video duration
+                let seekSec = 3;
+                try {
+                    const dur = await probeDuration(absolutePath);
+                    if (dur > 0.5) seekSec = Math.max(0.5, Math.random() * Math.min(dur, 60));
+                } catch (_) { }
                 await new Promise((resolve, reject) => {
                     ffmpeg(absolutePath)
-                        .inputOptions(['-ss 00:00:03'])
+                        .inputOptions([`-ss ${seekSec.toFixed(1)}`])
                         .outputOptions(['-frames:v 1', '-q:v 2'])
                         .output(output)
                         .on('end', resolve)
@@ -93,6 +129,100 @@ thumbnailRouter.get('/video', async (req, res, next) => {
             });
         }
         await sendThumbnail(res, output);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// sprite sheet for video seek preview
+thumbnailRouter.get('/video-sprite', async (req, res, next) => {
+    try {
+        await ensureDirs();
+        const { absolutePath, relativePath } = await resolveSafePath(String(req.query.path || ''));
+        // probe duration first
+        let duration = 0;
+        try { duration = await probeDuration(absolutePath); } catch (_) { }
+        if (duration <= 0) { res.status(400).json({ error: 'Cannot determine video duration' }); return; }
+
+        const { cols, rows, totalFrames, minInterval, density } = spriteParams(duration);
+        const interval = Math.max(minInterval || 0.3, duration / totalFrames);
+        const actualFrames = Math.min(totalFrames, Math.floor(duration / interval));
+        if (actualFrames < 2) { res.status(400).json({ error: 'Video too short for sprite' }); return; }
+
+        const key = `${relativePath}:${cols}x${rows}:${interval.toFixed(1)}`;
+        const spritePath = path.join(config.thumbnailsRoot, 'sprites', `${hashPath(key)}.jpg`);
+
+        if (!(await exists(spritePath))) {
+            await runLimited(`sprite:${key}`, async () => {
+                if (await exists(spritePath)) return;
+                const tmpDir = path.join(config.thumbnailsRoot, 'sprites', `tmp_${hashPath(key)}`);
+                await fs.mkdir(tmpDir, { recursive: true });
+                try {
+                    // extract frames
+                    const frameFiles = [];
+                    for (let i = 0; i < actualFrames; i++) {
+                        const t = i * interval;
+                        const framePath = path.join(tmpDir, `f_${String(i).padStart(3, '0')}.jpg`);
+                        await new Promise((resolve, reject) => {
+                            ffmpeg(absolutePath)
+                                .inputOptions([`-ss ${t.toFixed(1)}`])
+                                .outputOptions(['-frames:v 1', '-q:v 5'])
+                                .output(framePath)
+                                .on('end', resolve)
+                                .on('error', reject)
+                                .run();
+                        });
+                        frameFiles.push(framePath);
+                    }
+                    // uniform 9:16 portrait thumb size
+                    const thumbW = 90;
+                    const thumbH = 160;
+                    const resized = [];
+                    for (const f of frameFiles) {
+                        const buf = await sharp(f)
+                            .resize(thumbW, thumbH, { fit: 'cover', position: 'centre' })
+                            .jpeg({ quality: 70 })
+                            .toBuffer();
+                        resized.push({
+                            input: buf,
+                            top: Math.floor(resized.length / cols) * thumbH,
+                            left: (resized.length % cols) * thumbW,
+                        });
+                    }
+                    const canvasW = cols * thumbW;
+                    const canvasH = Math.ceil(actualFrames / cols) * thumbH;
+                    await sharp({ create: { width: canvasW, height: canvasH, channels: 3, background: '#000' } })
+                        .composite(resized)
+                        .jpeg({ quality: 75 })
+                        .toFile(spritePath);
+                } finally {
+                    await fs.rm(tmpDir, { recursive: true, force: true });
+                }
+            });
+        }
+
+        res.json({
+            spriteUrl: `/api/thumbnail/sprite-file?key=${encodeURIComponent(hashPath(key))}`,
+            cols, rows,
+            actualFrames,
+            interval,
+            duration,
+            thumbW: 90,
+            thumbH: 160,
+            density,
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// serve cached sprite file
+thumbnailRouter.get('/sprite-file', async (req, res, next) => {
+    try {
+        const key = String(req.query.key || '');
+        if (!key || !/^[a-f0-9]{40}$/.test(key)) { res.status(400).json({ error: 'Invalid key' }); return; }
+        const spritePath = path.join(config.thumbnailsRoot, 'sprites', `${key}.jpg`);
+        await sendThumbnail(res, spritePath);
     } catch (error) {
         next(error);
     }

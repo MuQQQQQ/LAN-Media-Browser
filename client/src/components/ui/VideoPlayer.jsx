@@ -22,6 +22,8 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
   const [scrubTime, setScrubTime] = useState(null);
   const [scrubbing, setScrubbing] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
+  const [spriteData, setSpriteData] = useState(null);
+  const [spriteEnabled, setSpriteEnabled] = useState(() => localStorage.getItem('sprite-preview') !== 'off');
 
   const g = useRef({
     mode: 'idle',
@@ -40,6 +42,17 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = playbackRate || 1;
   }, [playbackRate]);
+
+  // fetch sprite on src change
+  useEffect(() => {
+    setSpriteData(null);
+    if (!src) return;
+    const rawPath = src.includes('?path=') ? src.split('?path=')[1]?.split('&')[0] : src;
+    const u = `/api/thumbnail/video-sprite?path=${encodeURIComponent(decodeURIComponent(rawPath || ''))}`;
+    fetch(u).then(r => r.json()).then(d => {
+      if (d.spriteUrl) setSpriteData(d);
+    }).catch(() => {});
+  }, [src]);
 
   // reset on src change
   useEffect(() => {
@@ -276,6 +289,13 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
           onSeek={onProgressSeek}
           onScrub={onProgressScrub}
           onScrubEnd={onProgressEnd}
+          spriteData={spriteData}
+          spriteEnabled={spriteEnabled}
+          onSpriteToggle={() => {
+            const next = !spriteEnabled;
+            setSpriteEnabled(next);
+            localStorage.setItem('sprite-preview', next ? 'on' : 'off');
+          }}
         />
         {/* volume — right side, bigger tap target */}
         <div className="flex justify-end mt-0.5">
