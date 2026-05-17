@@ -7,6 +7,7 @@ import ContentGrid from './components/ui/ContentGrid.jsx';
 import Modal from './components/ui/Modal.jsx';
 import Toast from './components/ui/Toast.jsx';
 import FullscreenViewer from './components/FullscreenViewer.jsx';
+import MovePicker from './components/ui/MovePicker.jsx';
 import Pagination from './components/Pagination.jsx';
 import TagsPage from './components/TagsPage.jsx';
 import ApplyTagsModal from './components/ApplyTagsModal.jsx';
@@ -52,6 +53,8 @@ export default function App() {
   const [missingDialogOpen, setMissingDialogOpen] = useState(false);
   const [missingDialogBusy, setMissingDialogBusy] = useState(false);
   const [clipboard, setClipboard] = useState(null);
+  const [groupByTag, setGroupByTag] = useState(false);
+  const [groupCategory, setGroupCategory] = useState(null);
   const [history, setHistory] = useState(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; } });
   const [saved, setSaved] = useState(() => { try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch { return []; } });
   const [isSelectedAll, setIsSelectedAll] = useState(false);
@@ -119,7 +122,18 @@ export default function App() {
 
   // ==================== ACTIONS ====================
   const navigate = (path) => { window.location.href = `/?${new URLSearchParams({ path, page: 1, pageSize, sortBy, sortDir })}`; };
-  const toggleSelect = (path) => setSelected((p) => { const n = new Set(p); n.has(path) ? n.delete(path) : n.add(path); return n; });
+  const [lastClickedPath, setLastClickedPath] = useState('');
+  const toggleSelect = (path) => { setSelected((p) => { const n = new Set(p); n.has(path) ? n.delete(path) : n.add(path); return n; }); setLastClickedPath(path); };
+  const shiftRangeSelect = (toPath) => {
+    if (!lastClickedPath) { toggleSelect(toPath); return; }
+    const fromIdx = items.findIndex((i) => i.path === lastClickedPath);
+    const toIdx = items.findIndex((i) => i.path === toPath);
+    if (fromIdx === -1 || toIdx === -1) { toggleSelect(toPath); return; }
+    const start = Math.min(fromIdx, toIdx);
+    const end = Math.max(fromIdx, toIdx);
+    const range = items.slice(start, end + 1).map((i) => i.path);
+    setSelected((p) => { const n = new Set(p); range.forEach((path) => n.add(path)); return n; });
+  };
   const changeLayoutMode = (mode) => { const n = mode === 'masonry' ? 'masonry' : 'grid'; setLayoutMode(n); localStorage.setItem('layoutMode', n); };
   const selectAll = () => setSelected(new Set(items.map((i) => i.path)));
   const deselectAll = () => setSelected(new Set());
@@ -172,12 +186,18 @@ export default function App() {
   const deleteSingleItem = (item) => deleteItems([item]);
   const deleteSelected = () => deleteItems(items.filter((i) => selected.has(i.path)));
 
-  const moveItems = async (targetItems) => {
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [movePending, setMovePending] = useState(null);
+  const moveItems = (targetItems) => {
     if (!targetItems.length) return;
-    const targetFolder = window.prompt('Move to folder (relative)', currentPath);
-    if (targetFolder === null) return;
-    await api.moveItems({ items: normalizeOpItems(targetItems), targetFolder, createFolder: window.prompt('New folder name (optional)', '') || '' });
-    setSelected(new Set()); setToast(`Moved ${targetItems.length} items`); await load().catch(() => {});
+    setMovePending(targetItems);
+    setMoveOpen(true);
+  };
+  const executeMove = async (targetFolder) => {
+    if (!movePending?.length) return;
+    await api.moveItems({ items: normalizeOpItems(movePending), targetFolder, createFolder: '' });
+    setSelected(new Set()); setToast(`Moved ${movePending.length} items`); await load().catch(() => {});
+    setMovePending(null);
   };
   const renameItem = async (item) => {
     const renameTo = window.prompt('Rename', item.name);
@@ -198,10 +218,11 @@ export default function App() {
     setSelected(new Set()); await load().catch(() => {});
   };
   const tagItems = (ti) => { setSelected(new Set(ti.map((i) => i.path))); setApplyModalOpen(true); };
+  const [saveSearchOpen, setSaveSearchOpen] = useState(false);
+  const [saveSearchName, setSaveSearchName] = useState('');
   const saveCurrent = () => {
-    const label = window.prompt('Saved search name', filters.q || filters.name || 'Saved');
-    if (!label) return;
-    setSaved((s) => [{ id: Date.now(), label, filters: { ...filters } }, ...s]);
+    setSaveSearchName(filters.q || filters.name || 'Saved search');
+    setSaveSearchOpen(true);
   };
 
   // Missing items dialog
@@ -241,16 +262,13 @@ export default function App() {
         onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem} />
     </>
   );
-  if (viewerPath) return (
-    <FullscreenViewer files={previewFiles} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings}
-      onClose={() => { setViewerPath(''); window.history.back(); }}
-      onApplyTags={assignPaths} onRemoveTags={removePaths} onDeleteFile={deleteSingleItem} />
-  );
 
   return (
     <div className="min-h-screen bg-surface-0">
-      <Navbar />
-      <Toast message={toast} />
+      {/* main page — hidden (not unmounted) when viewer active */}
+      <div style={{ display: viewerPath ? 'none' : 'block' }}>
+        <Navbar />
+        <Toast message={toast} />
 
       {/* search bar */}
       <div className="pt-6 pb-2">
@@ -277,28 +295,30 @@ export default function App() {
         ) : (
           <div className="flex items-center justify-between gap-3 py-2">
             <BreadcrumbsWrap path={currentPath} onNavigate={navigate} pageSize={pageSize} />
-            <QuickFilters type={filters.itemType} setType={(t) => setFilters((f) => ({ ...f, itemType: t }))}
-              sortBy={sortBy} setSortBy={setSortBy} sortDir={sortDir} setSortDir={setSortDir} />
+            <QuickFilters
+              sortBy={sortBy} setSortBy={setSortBy} sortDir={sortDir} setSortDir={setSortDir}
+              groupByTag={groupByTag} onGroupToggle={() => { setGroupByTag((v) => !v); if (groupByTag) setGroupCategory(null); }}
+              groupCategory={groupCategory} onGroupCategoryChange={(id) => setGroupCategory(id)}
+              tagsTree={tagsTree} />
           </div>
         )}
 
-        {/* toolbar (selection actions) */}
+        {/* floating selection bar (does not push content) */}
         {(selected.size > 0 || clipboard?.items?.length > 0) && (
-          <div className="flex items-center gap-2 py-2 flex-wrap">
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-4 py-2 rounded-xl glass-strong shadow-2xl border border-brand/20">
             {!!selected.size && (
               <>
-                <button className="btn-base btn-ghost text-xs" onClick={selectAll}>Select All</button>
-                <button className="btn-base btn-ghost text-xs" onClick={deselectAll}>Deselect</button>
-                <button className="btn-base btn-ghost text-xs" onClick={() => moveItems(selectedItemsForOps())}>Move</button>
-                <button className="btn-base btn-ghost text-xs" onClick={() => copyItemsToClipboard(selectedItemsForOps())}>Copy</button>
-                <button className="btn-base btn-ghost text-xs" onClick={() => cutItemsToClipboard(selectedItemsForOps())}>Cut</button>
-                <button className="btn-base text-xs bg-danger/20 text-danger hover:bg-danger/30 rounded-xl" onClick={deleteSelected}>Delete</button>
+                <span className="text-xs text-text-secondary mr-1">{selected.size} selected</span>
+                <button className="btn-base btn-ghost text-xs py-1.5 px-2.5" onClick={() => moveItems(selectedItemsForOps())}>Move</button>
+                <button className="btn-base btn-ghost text-xs py-1.5 px-2.5" onClick={() => copyItemsToClipboard(selectedItemsForOps())}>Copy</button>
+                <button className="btn-base btn-ghost text-xs py-1.5 px-2.5" onClick={() => cutItemsToClipboard(selectedItemsForOps())}>Cut</button>
+                <button className="btn-base text-xs py-1.5 px-2.5 bg-danger/20 text-danger hover:bg-danger/30 rounded-xl" onClick={deleteSelected}>Delete</button>
               </>
             )}
             {clipboard?.items?.length > 0 && (
-              <button className="btn-base btn-primary text-xs" onClick={() => pasteItems()}>Paste ({clipboard.mode})</button>
+              <button className="btn-base btn-primary text-xs py-1.5 px-2.5" onClick={() => pasteItems()}>Paste ({clipboard.mode})</button>
             )}
-            <button className="btn-base btn-primary text-xs ml-auto" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>
+            <button className="btn-base btn-primary text-xs py-1.5 px-2.5" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>
               Tag ({selected.size})
             </button>
           </div>
@@ -311,7 +331,9 @@ export default function App() {
           <ContentGrid items={items} selectedPaths={selectedPaths} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode}
             onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect}
             onOpenFile={(file) => { setViewerPath(file.path); const u = new URL(window.location.href); u.searchParams.set('view', file.path); window.history.pushState({ viewing: true, filePath: file.path }, '', u.toString()); }}
-            onToggleFavorite={toggleFavorite} pageSize={pageSize} />
+            onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem}
+            onMoveItems={moveItems} onCopyItems={copyItemsToClipboard} onCutItems={cutItemsToClipboard} onTagItems={tagItems}
+            onShiftRangeSelect={shiftRangeSelect} groupByTag={groupByTag} groupCategory={groupCategory} tagsTree={tagsTree} pageSize={pageSize} />
         </div>
 
         {/* pagination */}
@@ -348,6 +370,54 @@ export default function App() {
           </div>
         </div>
       </Modal>
+      </div>{/* end visibility-hidden wrapper */}
+
+      {/* save search modal */}
+      <Modal open={saveSearchOpen} onClose={() => setSaveSearchOpen(false)} title="Save Search" maxWidth="max-w-sm">
+        <div className="space-y-3">
+          <input
+            autoFocus
+            value={saveSearchName}
+            onChange={(e) => setSaveSearchName(e.target.value)}
+            placeholder="Search name…"
+            className="w-full bg-surface-3 border border-border rounded-xl px-3 py-2 text-sm text-text-primary placeholder:text-text-muted"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && saveSearchName.trim()) {
+                setSaved((s) => [{ id: Date.now(), label: saveSearchName.trim(), filters: { ...filters } }, ...s]);
+                setSaveSearchOpen(false);
+                setToast('Search saved');
+              }
+            }}
+          />
+          <div className="flex gap-2">
+            <button
+              disabled={!saveSearchName.trim()}
+              onClick={() => { setSaved((s) => [{ id: Date.now(), label: saveSearchName.trim(), filters: { ...filters } }, ...s]); setSaveSearchOpen(false); setToast('Search saved'); }}
+              className="btn-base btn-primary flex-1 text-sm"
+            >
+              Save
+            </button>
+            <button onClick={() => setSaveSearchOpen(false)} className="btn-base btn-ghost text-sm">Cancel</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* move picker */}
+      <MovePicker
+        open={moveOpen}
+        onClose={() => { setMoveOpen(false); setMovePending(null); }}
+        currentPath={currentPath}
+        items={movePending}
+        onMove={(target) => { setMoveOpen(false); executeMove(target); }}
+      />
+
+      {/* fullscreen viewer over everything */}
+      {viewerPath && (
+        <FullscreenViewer files={previewFiles} initialPath={viewerPath} tagsTree={tagsTree} tagSettings={tagSettings}
+          onClose={() => { setViewerPath(''); window.history.back(); }}
+          onApplyTags={assignPaths} onRemoveTags={removePaths} onDeleteFile={deleteSingleItem}
+          onToggleFavorite={toggleFavorite} />
+      )}
     </div>
   );
 }
@@ -355,13 +425,37 @@ export default function App() {
 // inline breadcrumbs
 function BreadcrumbsWrap({ path, onNavigate, pageSize }) {
   const parts = path ? path.split('/').filter(Boolean) : [];
-  const crumbs = [{ label: 'Root', path: '' }, ...parts.map((p, i) => ({ label: p, path: parts.slice(0, i + 1).join('/') }))];
+  if (parts.length === 0) return <span className="text-xs text-text-muted">Root</span>;
+  // show first, last, ellipsis for middle
+  const maxVisible = 3;
+  let visibleParts;
+  if (parts.length <= maxVisible) {
+    visibleParts = parts.map((p, i) => ({ label: p, path: parts.slice(0, i + 1).join('/'), truncated: false }));
+  } else {
+    visibleParts = [
+      { label: parts[0], path: parts[0], truncated: parts[0].length > 10 ? parts[0].slice(0, 10) + '…' : parts[0] },
+      { label: '…', path: null, truncated: false, ellipsis: true },
+      { label: parts[parts.length - 2], path: parts.slice(0, parts.length - 1).join('/'), truncated: parts[parts.length - 2].length > 10 ? parts[parts.length - 2].slice(0, 10) + '…' : parts[parts.length - 2] },
+      { label: parts[parts.length - 1], path: path, truncated: parts[parts.length - 1].length > 12 ? parts[parts.length - 1].slice(0, 12) + '…' : parts[parts.length - 1] },
+    ];
+  }
   return (
-    <nav className="flex items-center gap-1 text-sm text-text-muted">
-      {crumbs.map((c, i) => (
-        <span key={c.path || 'root'} className="flex items-center gap-1">
-          <button onClick={() => onNavigate(c.path)} className="hover:text-text-primary transition-colors text-xs">{c.label}</button>
-          {i < crumbs.length - 1 && <span className="text-text-muted">/</span>}
+    <nav className="flex items-center gap-1 text-xs text-text-muted">
+      <button onClick={() => onNavigate('')} className="hover:text-text-primary transition-colors">Root</button>
+      {visibleParts.map((c, i) => (
+        <span key={i} className="flex items-center gap-1">
+          <span className="text-text-muted">/</span>
+          {c.ellipsis ? (
+            <span className="text-text-muted">…</span>
+          ) : (
+            <button
+              onClick={c.path ? () => onNavigate(c.path) : undefined}
+              className="hover:text-text-primary transition-colors truncate max-w-[120px]"
+              title={c.path || c.label}
+            >
+              {c.truncated || c.label}
+            </button>
+          )}
         </span>
       ))}
     </nav>

@@ -6,7 +6,6 @@ export default function FloatingRail({ children, offset = 0 }) {
       className="absolute top-1/2 -translate-y-1/2 flex flex-col gap-2 z-40"
       animate={{ right: 24 + offset }}
       transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-      style={{ right: 24 + offset }}
     >
       {children}
     </motion.div>

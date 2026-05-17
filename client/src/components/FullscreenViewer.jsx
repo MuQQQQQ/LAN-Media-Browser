@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronLeft, ChevronRight, Info, Star, RotateCw, Download, Trash2, Play, Pause } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Info, Star, RotateCw } from 'lucide-react';
 import { api, mediaUrl } from '../api.js';
 import FloatingRail, { RailButton } from './ui/FloatingRail.jsx';
 import MetadataDrawer from './ui/MetadataDrawer.jsx';
 
-export default function FullscreenViewer({ files, initialPath, tagsTree, tagSettings, onClose, onApplyTags, onRemoveTags, onDeleteFile }) {
+export default function FullscreenViewer({ files, initialPath, tagsTree, tagSettings, onClose, onApplyTags, onRemoveTags, onDeleteFile, onToggleFavorite }) {
   const [currentPath, setCurrentPath] = useState(initialPath);
   const [fileTags, setFileTags] = useState([]);
   const [selectedTagIds, setSelectedTagIds] = useState([]);
@@ -99,6 +99,7 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
       transition={{ duration: 0.2 }}
       onMouseMove={wakeControls}
       onPointerDown={wakeControls}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       onDoubleClick={(e) => { if (file.type === 'image') zoomAtPoint(e.clientX, e.clientY); }}
     >
       {/* === TOP BAR (auto-hide) === */}
@@ -124,7 +125,14 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
       </AnimatePresence>
 
       {/* === MEDIA === */}
-      <div className="viewer-media-container absolute inset-0 flex items-center justify-center overflow-hidden">
+      <motion.div
+        className="viewer-media-container absolute flex items-center justify-center overflow-hidden"
+        style={{ top: 0, left: 0, right: 0, bottom: file.type === 'video' ? 80 : 72 }}
+        animate={{
+          transform: (drawerOpen && window.innerWidth >= 768) ? 'scale(0.9) translateX(-120px)' : 'scale(1) translateX(0)',
+        }}
+        transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+      >
         {missing ? (
           <div className="text-center text-white/60">
             <h2 className="text-lg font-semibold mb-3">File not found</h2>
@@ -153,22 +161,22 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
             onError={() => setMissing(true)}
           />
         )}
-      </div>
+      </motion.div>
 
       {/* === FLOATING ACTION RAIL (right) === */}
       <FloatingRail offset={drawerOpen ? 380 : 0}>
         <RailButton icon={Info} label="Info" active={drawerOpen} onClick={() => setDrawerOpen((x) => !x)} />
         <RailButton
-          icon={file?.favorite ? Star : Star}
+          icon={Star}
           label={file?.favorite ? 'Unfavorite' : 'Favorite'}
-          onClick={() => {
-            // favorite toggle — needs parent state; skip or pass callback
+          active={!!file?.favorite}
+          onClick={async () => {
+            if (onToggleFavorite && file) {
+              await onToggleFavorite(file);
+            }
           }}
         />
         <RailButton icon={RotateCw} label="Reset view" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} />
-        {file?.type === 'video' && (
-          <RailButton icon={autoPlay ? Pause : Play} label={autoPlay ? 'Pause' : 'Play'} onClick={() => setAutoPlay((x) => !x)} />
-        )}
       </FloatingRail>
 
       {/* === METADATA DRAWER === */}
@@ -182,6 +190,8 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
         onToggleTag={toggle}
         onApplyTags={async () => { await onApplyTags?.([file.path], selectedTagIds); await refreshTags(); }}
         onRemoveTags={async () => { await onRemoveTags?.([file.path], selectedTagIds); await refreshTags(); }}
+        onTagSearch={(tag) => window.open(`/search?${new URLSearchParams({ tags: tag.id, tagMode: 'and', page: 1, pageSize: 50 })}`, '_blank', 'noopener,noreferrer')}
+        onRemoveSingleTag={async (tag) => { await api.removeTags({ paths: [{ path: file.path, type: 'file' }], tagIds: [tag.id] }); await refreshTags(); }}
         tagsTree={tagsTree}
         tagSettings={tagSettings}
         onDelete={async () => { await onDeleteFile?.(file); onClose(); }}
@@ -191,7 +201,7 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
           <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Details</h3>
           <dl className="space-y-1.5 text-sm">
             <div className="flex justify-between"><dt className="text-text-muted">Type</dt><dd className="text-text-primary capitalize">{file.type}</dd></div>
-            <div className="flex justify-between"><dt className="text-text-muted">Path</dt><dd className="text-text-primary text-right text-xs truncate max-w-[220px]" title={file.path}>{file.path}</dd></div>
+            <div><dt className="text-text-muted text-xs mb-0.5">Path</dt><dd className="text-text-primary text-xs leading-relaxed" title={file.path}>{ellipsisPath(file.path)}</dd></div>
             {file.size != null && <div className="flex justify-between"><dt className="text-text-muted">Size</dt><dd className="text-text-primary">{formatBytes(file.size)}</dd></div>}
           </dl>
         </section>
@@ -263,4 +273,12 @@ function formatBytes(value) {
   let unitIndex = 0;
   while (size >= 1024 && unitIndex < units.length - 1) { size /= 1024; unitIndex++; }
   return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function ellipsisPath(path) {
+  if (!path) return '';
+  const parts = path.split('/');
+  if (parts.length <= 3) return path;
+  // show: first / second / … / last
+  return parts[0] + ' / ' + parts[1] + ' / … / ' + parts[parts.length - 1];
 }

@@ -21,12 +21,13 @@ export default function FavoritesPage({ api, pageSize, onOpenFolder, onOpenFile,
           </div>
           <a href="/" className="btn-base btn-ghost text-xs">← Browse</a>
         </header>
-        <QuickFilters type={type} setType={setType} sortBy={sort} setSortBy={setSort} sortDir="asc" setSortDir={() => {}} />
+        <QuickFilters sortBy={sort} setSortBy={setSort} sortDir="asc" setSortDir={() => {}} />
         {error && <div className="px-3 py-2 my-3 text-sm rounded-xl bg-danger/10 border border-danger/20 text-danger">{error}</div>}
         <div className="py-4">
           <ContentGrid items={items} selectedPaths={selected} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode}
             onToggleSelect={onToggleSelect} onOpenFolder={onOpenFolder} onLongPressSelect={onToggleSelect}
-            onOpenFile={onOpenFile} onToggleFavorite={toggleFavorite} onDeleteItem={onDeleteItem} pageSize={pageSize} />
+            onOpenFile={onOpenFile} onToggleFavorite={toggleFavorite} onDeleteItem={onDeleteItem}
+            onMoveItems={undefined} onCopyItems={undefined} onCutItems={undefined} onTagItems={undefined} pageSize={pageSize} />
         </div>
       </div>
     </div>

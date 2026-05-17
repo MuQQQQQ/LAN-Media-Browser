@@ -1,6 +1,54 @@
 import { useMemo } from 'react';
-import { LayoutGrid, Columns } from 'lucide-react';
 import MediaCard from './MediaCard.jsx';
+
+function groupItems(items, tagsTree, groupCategory) {
+  if (!groupCategory) {
+    // no specific category selected: group by all level-1 categories
+    const result = [];
+    const seen = new Set();
+    for (const category of tagsTree) {
+      const groupItems = [];
+      for (const item of items) {
+        if (seen.has(item.path)) continue;
+        const hasTag = item.tags?.some((t) => category.children.some((c) => c.id === t.id));
+        const hasCategoryTag = item.tags?.some((t) => t.id === category.id);
+        if (hasTag || hasCategoryTag) {
+          groupItems.push(item);
+          seen.add(item.path);
+        }
+      }
+      if (groupItems.length > 0) result.push({ category, items: groupItems });
+    }
+    const rest = items.filter((i) => !seen.has(i.path));
+    if (rest.length > 0) result.push({ category: { name: 'Uncategorized', color: '#64748b', id: '_other' }, items: rest });
+    return result;
+  }
+
+  // specific category selected: group by level-2 tags
+  const category = tagsTree.find((c) => c.id === groupCategory || String(c.id) === String(groupCategory));
+  if (!category) return [{ category: { name: 'All', color: '#64748b', id: '_all' }, items }];
+
+  const groups = [];
+  const usedPaths = new Set();
+
+  for (const subTag of category.children) {
+    const groupItems = items.filter((item) =>
+      item.tags?.some((t) => t.id === subTag.id)
+    );
+    if (groupItems.length > 0) {
+      groups.push({ category: subTag, items: groupItems });
+      groupItems.forEach((i) => usedPaths.add(i.path));
+    }
+  }
+
+  // items without any of the category's sub-tags
+  const rest = items.filter((i) => !usedPaths.has(i.path));
+  if (rest.length > 0) {
+    groups.push({ category: { name: 'No ' + category.name + ' tag', color: '#64748b', id: '_other' }, items: rest });
+  }
+
+  return groups;
+}
 
 export default function ContentGrid({
   items,
@@ -12,74 +60,83 @@ export default function ContentGrid({
   onLongPressSelect,
   onOpenFile,
   onToggleFavorite,
+  onDeleteItem,
+  onMoveItems,
+  onCopyItems,
+  onCutItems,
+  onTagItems,
+  onShiftRangeSelect,
+  groupByTag,
+  onGroupToggle,
+  groupCategory,
+  tagsTree,
   pageSize,
 }) {
-  const folders = useMemo(() => items.filter((i) => i.type === 'folder'), [items]);
-  const media = useMemo(() => items.filter((i) => i.type !== 'folder'), [items]);
+  const groups = useMemo(
+    () => (groupByTag ? groupItems(items, tagsTree || [], groupCategory) : null),
+    [groupByTag, items, tagsTree, groupCategory]
+  );
+
+  const gridClass =
+    layoutMode === 'masonry'
+      ? 'columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-3 space-y-3'
+      : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3';
+
+  const renderCard = (item) => (
+    <MediaCard
+      key={`${item.type}:${item.path}`}
+      item={item}
+      selected={selectedPaths?.has?.(item.path)}
+      layout={layoutMode}
+      onOpen={item.type === 'folder' ? () => onOpenFolder?.(item.path) : () => onOpenFile?.(item)}
+      onToggleSelect={onToggleSelect}
+      onToggleFavorite={onToggleFavorite}
+      onLongPress={onLongPressSelect}
+      onDelete={onDeleteItem ? () => onDeleteItem(item) : undefined}
+      onMove={onMoveItems ? () => onMoveItems([item]) : undefined}
+      onCopy={onCopyItems ? () => onCopyItems([item]) : undefined}
+      onCut={onCutItems ? () => onCutItems([item]) : undefined}
+      onTag={onTagItems ? () => onTagItems([item]) : undefined}
+      onShiftClick={(path) => onShiftRangeSelect?.(path)}
+    />
+  );
 
   return (
     <div className="space-y-4">
-      {/* layout toggle */}
-      <div className="flex items-center justify-between px-1">
+      {/* item count */}
+      <div className="px-1">
         <p className="text-xs text-text-muted">
           {items.length} item{items.length !== 1 ? 's' : ''}
         </p>
-        <div className="flex gap-1 bg-surface-2 rounded-lg p-0.5 border border-border">
-          <button
-            onClick={() => onLayoutModeChange?.('grid')}
-            className={`p-1.5 rounded-md transition-colors ${layoutMode === 'grid' ? 'bg-surface-3 text-brand-glow' : 'text-text-muted hover:text-text-secondary'}`}
-            title="Grid"
-          >
-            <LayoutGrid size={15} />
-          </button>
-          <button
-            onClick={() => onLayoutModeChange?.('masonry')}
-            className={`p-1.5 rounded-md transition-colors ${layoutMode === 'masonry' ? 'bg-surface-3 text-brand-glow' : 'text-text-muted hover:text-text-secondary'}`}
-            title="Masonry"
-          >
-            <Columns size={15} />
-          </button>
-        </div>
       </div>
 
-      {/* folders section */}
-      {folders.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {folders.map((item) => (
-            <button
-              key={`folder:${item.path}`}
-              className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-surface-2 border border-border/60 card-hover text-center"
-              onClick={() => onOpenFolder?.(item.path)}
-            >
-              <span className="text-3xl">📁</span>
-              <span className="text-xs text-text-secondary truncate w-full">{item.name}</span>
-            </button>
+      {/* grouped view */}
+      {groupByTag && groups ? (
+        groups.map((group) => (
+          <div key={group.category.id} className="space-y-2">
+            <div className="flex items-center gap-2 px-1 py-1.5">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: group.category.color || '#64748b' }} />
+              <h3 className="text-sm font-medium text-text-primary">{group.category.name}</h3>
+              <span className="text-xs text-text-muted">{group.items.length}</span>
+            </div>
+            <div className={gridClass}>
+              {group.items.map((item) => (
+                <div key={`${item.type}:${item.path}`} className={layoutMode === 'masonry' ? 'break-inside-avoid' : ''}>
+                  {renderCard(item)}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className={gridClass}>
+          {items.map((item) => (
+            <div key={`${item.type}:${item.path}`} className={layoutMode === 'masonry' ? 'break-inside-avoid' : ''}>
+              {renderCard(item)}
+            </div>
           ))}
         </div>
       )}
-
-      {/* media grid */}
-      <div
-        className={
-          layoutMode === 'masonry'
-            ? 'columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-3 space-y-3'
-            : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3'
-        }
-      >
-        {media.map((item) => (
-          <div key={`${item.type}:${item.path}`} className={layoutMode === 'masonry' ? 'break-inside-avoid' : ''}>
-            <MediaCard
-              item={item}
-              selected={selectedPaths?.has(item.path)}
-              layout={layoutMode}
-              onOpen={onOpenFile}
-              onToggleSelect={onToggleSelect}
-              onToggleFavorite={onToggleFavorite}
-              onLongPress={onLongPressSelect}
-            />
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

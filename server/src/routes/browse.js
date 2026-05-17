@@ -8,7 +8,7 @@ import { resolveSafePath, toRelativeDbPath } from '../pathSafety.js';
 
 export const browseRouter = express.Router();
 
-const sortFields = new Set(['name', 'createdAt', 'modifiedAt', 'size']);
+const sortFields = new Set(['name', 'createdAt', 'modifiedAt', 'size', 'path']);
 
 function toIso(value) {
     return value instanceof Date ? value.toISOString() : null;
@@ -33,6 +33,8 @@ function sortItems(items, sortBy, sortDir) {
             result = new Date(a[sortBy] || 0).getTime() - new Date(b[sortBy] || 0).getTime();
         } else if (sortBy === 'size') {
             result = (a.size ?? -1) - (b.size ?? -1);
+        } else if (sortBy === 'path') {
+            result = a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: 'base' });
         } else {
             result = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
         }

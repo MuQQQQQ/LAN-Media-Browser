@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* font scale — controlled by JS setting --font-scale on <html> */
+:root { --font-scale: 1; }
+html { font-size: calc(14px * var(--font-scale)); }
+
 @theme {
   --color-surface-0: #080b10;
   --color-surface-1: #0f131c;

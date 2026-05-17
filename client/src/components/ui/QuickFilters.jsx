@@ -1,39 +1,45 @@
-import { Image, Film, FolderOpen, Calendar, ArrowUpDown } from 'lucide-react';
+import { ArrowUpDown, Layers } from 'lucide-react';
 
-export default function QuickFilters({ type, setType, sortBy, setSortBy, sortDir, setSortDir, onReset }) {
-  const types = [
-    { value: 'all', label: 'All', icon: null },
-    { value: 'image', label: 'Images', icon: Image },
-    { value: 'video', label: 'Videos', icon: Film },
-    { value: 'folder', label: 'Folders', icon: FolderOpen },
-  ];
-
+export default function QuickFilters({ sortBy, setSortBy, sortDir, setSortDir, groupByTag, onGroupToggle, groupCategory, onGroupCategoryChange, tagsTree }) {
   const sorts = [
     { value: 'name', label: 'Name' },
     { value: 'modifiedAt', label: 'Modified' },
     { value: 'createdAt', label: 'Created' },
     { value: 'size', label: 'Size' },
+    { value: 'path', label: 'Path' },
   ];
 
+  const categories = (tagsTree || []).filter((c) => !c.parentId);
+
   return (
-    <div className="flex items-center gap-3 px-2 py-2 flex-wrap justify-center">
-      {/* type chips */}
-      <div className="flex gap-1 bg-surface-2/60 rounded-xl p-1 border border-border">
-        {types.map((t) => (
+    <div className="flex items-center gap-2 px-2 py-1 flex-wrap">
+      {/* group toggle */}
+      {categories.length > 0 && (
+        <>
           <button
-            key={t.value}
-            onClick={() => { setType?.(t.value); }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
-              type === t.value
-                ? 'bg-brand text-white shadow-sm'
-                : 'text-text-muted hover:text-text-secondary hover:bg-surface-3/50'
+            onClick={onGroupToggle}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+              groupByTag ? 'bg-brand/15 text-brand-glow' : 'bg-surface-2 text-text-muted hover:text-text-secondary border border-border'
             }`}
+            title="Group by tag"
           >
-            {t.icon && <t.icon size={13} />}
-            {t.label}
+            <Layers size={13} />
+            <span className="hidden sm:inline">Group</span>
           </button>
-        ))}
-      </div>
+          {groupByTag && (
+            <select
+              value={groupCategory || ''}
+              onChange={(e) => onGroupCategoryChange?.(e.target.value || null)}
+              className="bg-surface-2 border border-border rounded-lg px-2 py-1 text-xs text-text-secondary"
+            >
+              <option value="">All categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          )}
+        </>
+      )}
 
       {/* sort */}
       <div className="flex items-center gap-1.5 text-xs text-text-muted">
