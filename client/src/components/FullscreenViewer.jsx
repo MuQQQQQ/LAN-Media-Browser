@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronLeft, ChevronRight, Info, Star, RotateCw } from 'lucide-react';
 import { api, mediaUrl } from '../api.js';
 import FloatingRail, { RailButton } from './ui/FloatingRail.jsx';
 import MetadataDrawer from './ui/MetadataDrawer.jsx';
+import VideoPlayer from './ui/VideoPlayer.jsx';
 
 export default function FullscreenViewer({ files, initialPath, tagsTree, tagSettings, onClose, onApplyTags, onRemoveTags, onDeleteFile, onToggleFavorite }) {
   const [currentPath, setCurrentPath] = useState(initialPath);
@@ -17,8 +18,6 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
   const [autoPlay, setAutoPlay] = useState(() => localStorage.getItem('viewer-autoplay') === 'true');
   const [playbackRate, setPlaybackRate] = useState(() => Number(localStorage.getItem('viewer-playback-rate') || 1));
   const [showControls, setShowControls] = useState(true);
-  const hideTimer = useRef(null);
-  const videoRef = useRef(null);
 
   const currentIndex = files.findIndex((f) => f.path === currentPath);
   const file = files[currentIndex] || files[0];
@@ -55,15 +54,7 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
   useEffect(() => { localStorage.setItem('viewer-autoplay', String(autoPlay)); }, [autoPlay]);
   useEffect(() => { localStorage.setItem('viewer-playback-rate', String(playbackRate)); }, [playbackRate]);
 
-  // auto-hide controls for video
-  useEffect(() => {
-    if (file?.type !== 'video') return;
-    if (!showControls) return;
-    clearTimeout(hideTimer.current);
-    hideTimer.current = setTimeout(() => setShowControls(false), 3000);
-    return () => clearTimeout(hideTimer.current);
-  }, [showControls, file?.type]);
-  const wakeControls = () => { setShowControls(true); };
+  const wakeControls = () => setShowControls(true);
 
   if (!file) return null;
 
@@ -127,7 +118,7 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
       {/* === MEDIA === */}
       <motion.div
         className="viewer-media-container absolute flex items-center justify-center overflow-hidden"
-        style={{ top: 0, left: 0, right: 0, bottom: file.type === 'video' ? 80 : 72 }}
+        style={{ top: 0, left: 0, right: 0, bottom: file.type === 'video' ? 60 : 60 }}
         animate={{
           transform: (drawerOpen && window.innerWidth >= 768) ? 'scale(0.9) translateX(-120px)' : 'scale(1) translateX(0)',
         }}
@@ -150,14 +141,11 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
             onError={() => setMissing(true)}
           />
         ) : (
-          <video
-            ref={videoRef}
-            className="max-w-full max-h-full object-contain"
-            controls={showControls}
-            autoPlay={autoPlay}
-            playsInline
+          <VideoPlayer
             src={mediaUrl(file.path)}
-            onLoadedMetadata={(e) => { e.currentTarget.playbackRate = playbackRate; }}
+            autoPlay={autoPlay}
+            playbackRate={playbackRate}
+            onLoadedMetadata={(e) => { if (e?.currentTarget) e.currentTarget.playbackRate = playbackRate; }}
             onError={() => setMissing(true)}
           />
         )}
@@ -234,7 +222,7 @@ export default function FullscreenViewer({ files, initialPath, tagsTree, tagSett
       <AnimatePresence>
         {showControls && (
           <motion.div
-            className="absolute bottom-0 left-0 right-0 z-30 flex items-center justify-center gap-6 px-4 py-4 bg-gradient-to-t from-black/70 to-transparent"
+            className="absolute bottom-0 left-0 right-0 z-30 flex items-center justify-center gap-6 px-4 py-3 bg-gradient-to-t from-black/70 to-transparent"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
