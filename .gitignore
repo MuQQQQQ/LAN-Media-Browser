@@ -4,3 +4,18 @@ server/thumbnails
 server/package-lock.json
 client/package-lock.json
 client/dist
+# npm-generated bin shims (auto-created by `npm install`)
+client/*.cmd
+client/*.ps1
+client/esbuild
+client/jsesc
+client/json5
+client/nanoid
+client/parser
+client/rollup
+client/semver
+client/vite
+client/baseline-browser-mapping
+client/browserslist
+client/loose-envify
+client/update-browserslist-db
