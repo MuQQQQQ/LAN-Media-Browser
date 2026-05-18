@@ -188,7 +188,7 @@ export default function App() {
   const removeSelected = async (tagIds) => { const si = items.filter((i) => selected.has(i.path)).map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); await removePaths(si, tagIds); setApplyModalOpen(false); };
   const createTag = async (payload) => { await api.createTag(payload); await loadTags(); setToast('Tag created'); };
   const updateTag = async (id, payload) => { await api.updateTag(id, payload); await loadTags(); setToast('Tag updated'); };
-  const deleteTag = async (id) => { if (!confirm('Delete this tag?')) return; await api.deleteTag(id); await loadTags(); };
+  const deleteTag = async (id) => { await api.deleteTag(id); await loadTags(); setToast('Tag deleted'); };
 
   const toggleFavorite = async (item) => {
     const payload = { path: item.path, type: item.type === 'folder' ? 'folder' : 'file' };
