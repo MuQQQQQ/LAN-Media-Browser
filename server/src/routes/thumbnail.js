@@ -155,50 +155,23 @@ thumbnailRouter.get('/video-sprite', async (req, res, next) => {
         if (!(await exists(spritePath))) {
             await runLimited(`sprite:${key}`, async () => {
                 if (await exists(spritePath)) return;
-                const tmpDir = path.join(config.thumbnailsRoot, 'sprites', `tmp_${hashPath(key)}`);
-                await fs.mkdir(tmpDir, { recursive: true });
-                try {
-                    // extract frames
-                    const frameFiles = [];
-                    for (let i = 0; i < actualFrames; i++) {
-                        const t = i * interval;
-                        const framePath = path.join(tmpDir, `f_${String(i).padStart(3, '0')}.jpg`);
-                        await new Promise((resolve, reject) => {
-                            ffmpeg(absolutePath)
-                                .inputOptions([`-ss ${t.toFixed(1)}`])
-                                .outputOptions(['-frames:v 1', '-q:v 5'])
-                                .output(framePath)
-                                .on('end', resolve)
-                                .on('error', reject)
-                                .run();
-                        });
-                        frameFiles.push(framePath);
-                    }
-                    // uniform 9:16 portrait thumb size
-                    const rate = 0.8;
-                    const thumbW = Math.round(90 * rate);
-                    const thumbH = Math.round(160 * rate);
-                    const resized = [];
-                    for (const f of frameFiles) {
-                        const buf = await sharp(f)
-                            .resize(thumbW, thumbH, { fit: 'cover', position: 'centre' })
-                            .jpeg({ quality: 70 })
-                            .toBuffer();
-                        resized.push({
-                            input: buf,
-                            top: Math.floor(resized.length / cols) * thumbH,
-                            left: (resized.length % cols) * thumbW,
-                        });
-                    }
-                    const canvasW = cols * thumbW;
-                    const canvasH = Math.ceil(actualFrames / cols) * thumbH;
-                    await sharp({ create: { width: canvasW, height: canvasH, channels: 3, background: '#000' } })
-                        .composite(resized)
-                        .jpeg({ quality: 75 })
-                        .toFile(spritePath);
-                } finally {
-                    await fs.rm(tmpDir, { recursive: true, force: true });
-                }
+                // single ffmpeg pass: fps filter → scale+crop → tile grid
+                const fps = (1 / interval).toFixed(4);
+                const vf = [
+                  `fps=${fps}`,
+                  `scale=90:160:force_original_aspect_ratio=increase`,
+                  `crop=90:160`,
+                  `tile=${cols}x${Math.ceil(actualFrames / cols)}`,
+                ].join(',');
+                await new Promise((resolve, reject) => {
+                  ffmpeg(absolutePath)
+                    .inputOptions(['-an', '-sn'])
+                    .outputOptions(['-frames:v', String(actualFrames), '-q:v', '8', '-vf', vf])
+                    .output(spritePath)
+                    .on('end', resolve)
+                    .on('error', reject)
+                    .run();
+                });
             });
         }
 

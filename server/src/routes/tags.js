@@ -48,7 +48,7 @@ tagsRouter.post('/', (req, res) => {
         if (!parent) return res.status(400).json({ error: 'Level 2 tags must belong to an existing Level 1 tag' });
     }
     const color = normalizeColor(req.body.color) || defaultTagColor(name, parentId);
-    const result = db.prepare('INSERT OR IGNORE INTO tags(name, parent_id, created_at, color) VALUES (?, ?, CURRENT_TIMESTAMP, ?)').run(name, parentId, color);
+    const result = db.prepare('INSERT OR IGNORE INTO tags(name, parent_id, created_at, last_used_at, color) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)').run(name, parentId, color);
     const tag = db.prepare('SELECT id, name, parent_id AS parentId, created_at AS createdAt, last_used_at AS lastUsedAt, color FROM tags WHERE name = ? AND parent_id IS ?').get(name, parentId);
     res.status(result.changes ? 201 : 200).json({ tag });
 });

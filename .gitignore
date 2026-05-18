@@ -2,6 +2,7 @@ node_modules
 *data*
 server/thumbnails
 server/package-lock.json
+convert_video.py
 client/package-lock.json
 client/dist
 # npm-generated bin shims (auto-created by `npm install`)
