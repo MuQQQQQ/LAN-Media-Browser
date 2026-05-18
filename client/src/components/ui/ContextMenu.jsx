@@ -5,14 +5,22 @@ export default function ContextMenu({ x, y, onClose, items = [] }) {
   const ref = useRef(null);
 
   useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
-    };
-    document.addEventListener('click', handler);
-    document.addEventListener('contextmenu', handler);
+    // delay to avoid closing on the same event that opened us
+    const id = setTimeout(() => {
+      const handler = (e) => {
+        if (ref.current && !ref.current.contains(e.target)) onClose();
+      };
+      document.addEventListener('click', handler, true);
+      document.addEventListener('contextmenu', handler, true);
+      // store for cleanup
+      ref.current._cleanup = () => {
+        document.removeEventListener('click', handler, true);
+        document.removeEventListener('contextmenu', handler, true);
+      };
+    }, 0);
     return () => {
-      document.removeEventListener('click', handler);
-      document.removeEventListener('contextmenu', handler);
+      clearTimeout(id);
+      ref.current?._cleanup?.();
     };
   }, [onClose]);
 

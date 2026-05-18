@@ -103,33 +103,32 @@ export default function MediaCard({ item, selected, layout, onOpen, onToggleSele
         )}
 
         {/* hover overlay — actions */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200">
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 pointer-events-none">
           {/* favorite button */}
           <button
             onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(item); }}
-            className={`absolute top-2 right-2 btn-icon w-8 h-8 glass transition-all duration-200 ${
+            className={`pointer-events-auto absolute top-2 right-2 btn-icon w-8 h-8 glass transition-all duration-200 ${
               item.favorite ? 'opacity-100 text-yellow-400' : 'opacity-0 group-hover:opacity-100 text-white/80 hover:text-yellow-300'
             }`}
           >
             <Star size={15} fill={item.favorite ? 'currentColor' : 'none'} />
           </button>
 
-          {/* select checkbox */}
-          <label
-            className={`absolute bottom-2 right-2 w-5 h-5 rounded-md border-2 border-white/40 bg-black/30 flex items-center justify-center cursor-pointer transition-all ${
-              !isFolder ? 'opacity-0 group-hover:opacity-100' : ''
-            } ${selected ? 'opacity-100 border-brand bg-brand' : ''}`}
+          {/* select checkbox — always visible */}
+          <div
+            className={`pointer-events-auto absolute bottom-2 right-2 w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all ${
+              selected ? 'border-brand bg-brand' : 'border-white/50 bg-black/40 hover:border-white/80'
+            }`}
             onClick={(e) => { e.stopPropagation(); onToggleSelect?.(item.path); }}
           >
-            <input type="checkbox" checked={selected} onChange={() => {}} className="sr-only" />
             {selected && <span className="text-white text-[10px]">✓</span>}
-          </label>
+          </div>
 
           {/* delete button */}
           {onDelete && (
             <button
               onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-              className="absolute top-2 left-2 btn-icon w-7 h-7 glass opacity-0 group-hover:opacity-100 text-white/60 hover:text-danger transition-all"
+              className="pointer-events-auto absolute top-2 left-2 btn-icon w-7 h-7 glass opacity-0 group-hover:opacity-100 text-white/60 hover:text-danger transition-all"
               title="Delete"
             >
               ×

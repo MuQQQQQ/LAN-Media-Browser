@@ -20,7 +20,7 @@ export default function ApplyTagsModal({ open, selectedCount, tagsTree, tagSetti
               <div>
                 <h3 className="text-xs text-text-muted mb-1.5">Common Tags</h3>
                 <div className="flex flex-wrap gap-1">
-                  {analysis.common.map((tag) => <span key={tag.id} className="px-2 py-0.5 rounded-full text-xs font-medium bg-surface-3 border border-border" style={{ color: tag.color || '#64748b' }}>{tag.name}</span>)}
+                  {analysis.common.map((tag) => <span key={tag.id} className="px-2 py-0.5 rounded-full text-xs font-medium bg-surface-3 border border-border" style={{ color: tag.color || '#64748b' ,backgroundColor: (tag.color || '#64748b') + '15', borderColor: (tag.color || '#64748b') + '70'}}>{tag.name}</span>)}
                 </div>
               </div>
             )}
@@ -28,7 +28,7 @@ export default function ApplyTagsModal({ open, selectedCount, tagsTree, tagSetti
               <div>
                 <h3 className="text-xs text-text-muted mb-1.5">Partial Tags</h3>
                 <div className="flex flex-wrap gap-1">
-                  {analysis.partial.map((tag) => <span key={tag.id} className="px-2 py-0.5 rounded-full text-xs font-medium bg-surface-3 border border-border" style={{ color: tag.color || '#64748b' }}>{tag.name}</span>)}
+                  {analysis.partial.map((tag) => <span key={tag.id} className="px-2 py-0.5 rounded-full text-xs font-medium bg-surface-3 border border-border" style={{ color: tag.color || '#64748b',backgroundColor: (tag.color || '#64748b') + '15', borderColor: (tag.color || '#64748b') + '70' }}>{tag.name}</span>)}
                 </div>
               </div>
             )}
