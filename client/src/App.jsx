@@ -55,12 +55,16 @@ export default function App() {
   const [clipboard, setClipboard] = useState(null);
   const [groupByTag, setGroupByTag] = useState(false);
   const [groupCategory, setGroupCategory] = useState(null);
+  const [allItems, setAllItems] = useState(null); // full dataset when grouping
   const [history, setHistory] = useState(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; } });
   const [saved, setSaved] = useState(() => { try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch { return []; } });
   const [isSelectedAll, setIsSelectedAll] = useState(false);
 
   const selectedPaths = useMemo(() => new Set(Array.from(selected)), [selected]);
-  const previewFiles = useMemo(() => items.filter((i) => i.type !== 'folder'), [items]);
+  const previewFiles = useMemo(() => {
+    const src = groupByTag && allItems ? allItems : items;
+    return src.filter((i) => i.type !== 'folder');
+  }, [items, allItems, groupByTag]);
 
   // ==================== DATA LOADING ====================
   async function loadTags() {
@@ -89,6 +93,25 @@ export default function App() {
 
   useEffect(() => { loadTags().catch((e) => setError(e.message)); }, [tagSettings.sortMode]);
   useEffect(() => { if (!isTagsPage && !isFavoritesPage) load(); }, [currentPath, page, pageSize, sortBy, sortDir, isSearchPage, isTagsPage, isFavoritesPage]);
+
+  // fetch all items for grouping (cross-page)
+  useEffect(() => {
+    if (!groupByTag || isTagsPage || isFavoritesPage || isSearchPage) { setAllItems(null); return; }
+    let cancelled = false;
+    (async () => {
+      const pageSize = 200;
+      const all = [];
+      let p = 1;
+      while (true) {
+        const data = await api.browse({ path: currentPath, page: p, pageSize, sortBy, sortDir });
+        all.push(...data.items);
+        if (all.length >= data.total || data.items.length < pageSize) break;
+        p++;
+      }
+      if (!cancelled) setAllItems(all);
+    })().catch(() => { if (!cancelled) setAllItems(null); });
+    return () => { cancelled = true; };
+  }, [groupByTag, currentPath, sortBy, sortDir, isTagsPage, isFavoritesPage, isSearchPage]);
   useEffect(() => { if (!isTagsPage) { api.orphanRecords().then((d) => { if (d.count > 0) { setMissingItems(d.items || []); setMissingItemsTotal(d.count); setMissingDialogOpen(true); } }).catch(() => {}); } }, []);
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); } }, [toast]);
   useEffect(() => { if (applyModalOpen && selected.size) { const si = items.filter((i) => selected.has(i.path)).map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); api.tagAnalysis(si).then(setTagAnalysis).catch(() => setTagAnalysis({ common: [], partial: [] })); } }, [applyModalOpen, selected, items]);
@@ -328,7 +351,7 @@ export default function App() {
 
         {/* content grid */}
         <div className="py-4">
-          <ContentGrid items={items} selectedPaths={selectedPaths} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode}
+          <ContentGrid items={groupByTag && allItems ? allItems : items} selectedPaths={selectedPaths} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode}
             onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect}
             onOpenFile={(file) => { setViewerPath(file.path); const u = new URL(window.location.href); u.searchParams.set('view', file.path); window.history.pushState({ viewing: true, filePath: file.path }, '', u.toString()); }}
             onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem}
@@ -336,8 +359,8 @@ export default function App() {
             onShiftRangeSelect={shiftRangeSelect} groupByTag={groupByTag} groupCategory={groupCategory} tagsTree={tagsTree} pageSize={pageSize} />
         </div>
 
-        {/* pagination */}
-        <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
+        {/* pagination — hidden when grouping (ContentGrid has its own) */}
+        {!groupByTag && <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />}
       </div>
 
       {/* modals */}
