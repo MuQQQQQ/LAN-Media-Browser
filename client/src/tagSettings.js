@@ -1,4 +1,4 @@
-export const defaultTagSettings = { displayMode: 'collapsed', sortMode: 'alphabetical' };
+export const defaultTagSettings = { displayMode: 'expanded', sortMode: 'alphabetical' };
 
 export function loadTagSettings() {
     try { return { ...defaultTagSettings, ...JSON.parse(localStorage.getItem('tagSettings') || '{}') }; }
