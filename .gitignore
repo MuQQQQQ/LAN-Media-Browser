@@ -1,5 +1,5 @@
 node_modules
-*data*
+server/data*
 server/thumbnails
 server/package-lock.json
 convert_video.py

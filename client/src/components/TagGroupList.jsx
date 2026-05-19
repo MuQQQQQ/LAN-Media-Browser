@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export default function TagGroupList({ tagsTree, selectedTagIds = [], onToggleTag, displayMode = 'expanded', limit = 12, recentHighlight = true }) {
+export default function TagGroupList({ tagsTree, selectedTagIds = [], onToggleTag, displayMode = 'expanded', limit = 12, recentHighlight = true, onTagContextMenu }) {
     const [expanded, setExpanded] = useState({});
     return (
         <div className="space-y-3">
@@ -26,6 +26,7 @@ export default function TagGroupList({ tagsTree, selectedTagIds = [], onToggleTa
                                     <button
                                         key={tag.id}
                                         onClick={() => onToggleTag?.(tag.id)}
+                                        onContextMenu={onTagContextMenu ? (e) => { e.preventDefault(); onTagContextMenu(tag, e); } : undefined}
                                         className={`px-2.5 py-1 rounded-full text-base font-medium transition-all duration-150 border ${selected
                                             ? 'bg-brand/20 border-brand/50 text-brand-glow shadow-sm shadow-brand/10'
                                             : 'bg-surface-3/50 border-transparent text-text-secondary hover:border-border hover:text-text-primary'

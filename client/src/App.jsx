@@ -186,7 +186,7 @@ export default function App() {
   const assignSelected = async (tagIds) => { const si = items.filter((i) => selected.has(i.path)).map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); await assignPaths(si, tagIds); setApplyModalOpen(false); };
   const removePaths = async (paths, tagIds) => { await api.removeTags({ paths, tagIds }); await loadTags(); await load().catch(() => {}); setToast('Tag removed'); };
   const removeSelected = async (tagIds) => { const si = items.filter((i) => selected.has(i.path)).map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); await removePaths(si, tagIds); setApplyModalOpen(false); };
-  const createTag = async (payload) => { await api.createTag(payload); await loadTags(); setToast('Tag created'); };
+  const createTag = async (payload) => { const result = await api.createTag(payload); await loadTags(); setToast('Tag created'); return result.tag; };
   const updateTag = async (id, payload) => { await api.updateTag(id, payload); await loadTags(); setToast('Tag updated'); };
   const deleteTag = async (id) => { await api.deleteTag(id); await loadTags(); setToast('Tag deleted'); };
 
@@ -365,7 +365,7 @@ export default function App() {
 
       {/* modals */}
       <ApplyTagsModal open={applyModalOpen} selectedCount={selected.size} tagsTree={tagsTree} tagSettings={tagSettings}
-        onClose={() => setApplyModalOpen(false)} onApply={assignSelected} onRemove={removeSelected} onCreateTag={createTag} analysis={tagAnalysis} />
+        onClose={() => setApplyModalOpen(false)} onApply={assignSelected} onRemove={removeSelected} onCreateTag={createTag} onDeleteTag={deleteTag} analysis={tagAnalysis} />
       <CreateTagModal open={createModalOpen} tagsTree={tagsTree} onClose={() => setCreateModalOpen(false)} onCreateTag={createTag} />
 
       {/* missing items modal */}
