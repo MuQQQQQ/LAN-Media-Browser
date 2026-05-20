@@ -18,6 +18,7 @@ import { loadTagSettings, saveTagSettings } from './tagSettings.js';
 const defaultFilters = { q: '', name: '', tags: [], tagMode: 'and', matchType: 'contains', scope: 'both', caseSensitive: false, itemType: 'all', pathFilter: '', dateFrom: '', dateTo: '', tagSearchEnabled: false };
 const HISTORY_KEY = 'lan-media-search-history';
 const SAVED_KEY = 'lan-media-saved-searches';
+const SORT_PREF_KEY = 'lan-media-sort-preference';
 const MISSING_ITEMS_PREVIEW_LIMIT = 200;
 
 function updateUrl(params) {
@@ -25,13 +26,19 @@ function updateUrl(params) {
   window.history.replaceState(null, '', `${window.location.pathname}?${next}`);
 }
 
+function positiveNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export default function App() {
   const url = new URLSearchParams(window.location.search);
+  const savedSort = (() => { try { return JSON.parse(localStorage.getItem(SORT_PREF_KEY) || '{}'); } catch { return {}; } })();
   const [currentPath, setCurrentPath] = useState(url.get('path') || '');
-  const [page, setPage] = useState(Number(url.get('page') || 1));
-  const [pageSize, setPageSize] = useState(Number(url.get('pageSize') || 50));
-  const [sortBy, setSortBy] = useState(url.get('sortBy') || 'name');
-  const [sortDir, setSortDir] = useState(url.get('sortDir') || 'asc');
+  const [page, setPage] = useState(positiveNumber(url.get('page'), 1));
+  const [pageSize, setPageSize] = useState(positiveNumber(url.get('pageSize'), 50));
+  const [sortBy, setSortBy] = useState(url.get('sortBy') || savedSort.sortBy || 'name');
+  const [sortDir, setSortDir] = useState(url.get('sortDir') || savedSort.sortDir || 'asc');
   const [layoutMode, setLayoutMode] = useState(() => localStorage.getItem('layoutMode') || 'grid');
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -53,8 +60,10 @@ export default function App() {
   const [missingDialogOpen, setMissingDialogOpen] = useState(false);
   const [missingDialogBusy, setMissingDialogBusy] = useState(false);
   const [clipboard, setClipboard] = useState(null);
-  const [groupByTag, setGroupByTag] = useState(false);
-  const [groupCategory, setGroupCategory] = useState(null);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [groupByTag, setGroupByTag] = useState(url.get('groupBy') === 'tag');
+  const [groupCategory, setGroupCategory] = useState(url.get('groupCategory') || null);
   const [allItems, setAllItems] = useState(null); // full dataset when grouping
   const [history, setHistory] = useState(() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; } });
   const [saved, setSaved] = useState(() => { try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch { return []; } });
@@ -65,6 +74,7 @@ export default function App() {
     const src = groupByTag && allItems ? allItems : items;
     return src.filter((i) => i.type !== 'folder');
   }, [items, allItems, groupByTag]);
+  const operationItems = useMemo(() => (groupByTag && allItems ? allItems : items), [groupByTag, allItems, items]);
 
   // ==================== DATA LOADING ====================
   async function loadTags() {
@@ -86,13 +96,23 @@ export default function App() {
         const data = await api.browse({ path: currentPath, page, pageSize, sortBy, sortDir });
         setItems(data.items);
         setTotal(data.total);
-        updateUrl({ path: currentPath, page, pageSize, sortBy, sortDir });
+        const params = new URLSearchParams({ path: currentPath, page, pageSize, sortBy, sortDir });
+        if (groupByTag) params.set('groupBy', 'tag');
+        if (groupByTag && groupCategory) params.set('groupCategory', groupCategory);
+        updateUrl(params);
       }
     } catch (err) { setError(err.message); }
   }
 
   useEffect(() => { loadTags().catch((e) => setError(e.message)); }, [tagSettings.sortMode]);
-  useEffect(() => { if (!isTagsPage && !isFavoritesPage) load(); }, [currentPath, page, pageSize, sortBy, sortDir, isSearchPage, isTagsPage, isFavoritesPage]);
+  useEffect(() => {
+    if (isSearchPage || isTagsPage || isFavoritesPage) return;
+    const params = new URLSearchParams({ path: currentPath, page, pageSize, sortBy, sortDir });
+    if (groupByTag) params.set('groupBy', 'tag');
+    if (groupByTag && groupCategory) params.set('groupCategory', groupCategory);
+    updateUrl(params);
+  }, [currentPath, page, pageSize, sortBy, sortDir, groupByTag, groupCategory, isSearchPage, isTagsPage, isFavoritesPage]);
+  useEffect(() => { if (!isTagsPage && !isFavoritesPage) load(); }, [currentPath, page, pageSize, sortBy, sortDir, groupByTag, groupCategory, isSearchPage, isTagsPage, isFavoritesPage]);
 
   // fetch all items for grouping (cross-page)
   useEffect(() => {
@@ -111,16 +131,27 @@ export default function App() {
       if (!cancelled) setAllItems(all);
     })().catch(() => { if (!cancelled) setAllItems(null); });
     return () => { cancelled = true; };
-  }, [groupByTag, currentPath, sortBy, sortDir, isTagsPage, isFavoritesPage, isSearchPage]);
-  useEffect(() => { if (!isTagsPage) { api.orphanRecords().then((d) => { if (d.count > 0) { setMissingItems(d.items || []); setMissingItemsTotal(d.count); setMissingDialogOpen(true); } }).catch(() => {}); } }, []);
+  }, [groupByTag, currentPath, sortBy, sortDir, refreshNonce, isTagsPage, isFavoritesPage, isSearchPage]);
+  useEffect(() => { if (!isTagsPage) { api.orphanRecords().then((d) => { if (d.count > 0) { setMissingItems(d.items || []); setMissingItemsTotal(d.count); setMissingDialogOpen(true); } }).catch(() => { }); } }, []);
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); } }, [toast]);
-  useEffect(() => { if (applyModalOpen && selected.size) { const si = items.filter((i) => selected.has(i.path)).map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); api.tagAnalysis(si).then(setTagAnalysis).catch(() => setTagAnalysis({ common: [], partial: [] })); } }, [applyModalOpen, selected, items]);
+  useEffect(() => { if (applyModalOpen && selected.size) { const si = selectedItemsForOps().map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); api.tagAnalysis(si).then(setTagAnalysis).catch(() => setTagAnalysis({ common: [], partial: [] })); } }, [applyModalOpen, selected, operationItems]);
   useEffect(() => { localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 12))); }, [history]);
   useEffect(() => { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); }, [saved]);
+  useEffect(() => { localStorage.setItem(SORT_PREF_KEY, JSON.stringify({ sortBy, sortDir })); }, [sortBy, sortDir]);
 
   // popstate
   useEffect(() => {
-    const h = () => { const p = new URLSearchParams(window.location.search); setViewerPath(p.get('view') || ''); };
+    const h = () => {
+      const p = new URLSearchParams(window.location.search);
+      setCurrentPath(p.get('path') || '');
+      setPage(positiveNumber(p.get('page'), 1));
+      setPageSize(positiveNumber(p.get('pageSize'), 50));
+      setSortBy(p.get('sortBy') || 'name');
+      setSortDir(p.get('sortDir') || 'asc');
+      setGroupByTag(p.get('groupBy') === 'tag');
+      setGroupCategory(p.get('groupCategory') || null);
+      setViewerPath(p.get('view') || '');
+    };
     window.addEventListener('popstate', h);
     return () => window.removeEventListener('popstate', h);
   }, []);
@@ -149,19 +180,19 @@ export default function App() {
   const toggleSelect = (path) => { setSelected((p) => { const n = new Set(p); n.has(path) ? n.delete(path) : n.add(path); return n; }); setLastClickedPath(path); };
   const shiftRangeSelect = (toPath) => {
     if (!lastClickedPath) { toggleSelect(toPath); return; }
-    const fromIdx = items.findIndex((i) => i.path === lastClickedPath);
-    const toIdx = items.findIndex((i) => i.path === toPath);
+    const fromIdx = operationItems.findIndex((i) => i.path === lastClickedPath);
+    const toIdx = operationItems.findIndex((i) => i.path === toPath);
     if (fromIdx === -1 || toIdx === -1) { toggleSelect(toPath); return; }
     const start = Math.min(fromIdx, toIdx);
     const end = Math.max(fromIdx, toIdx);
-    const range = items.slice(start, end + 1).map((i) => i.path);
+    const range = operationItems.slice(start, end + 1).map((i) => i.path);
     setSelected((p) => { const n = new Set(p); range.forEach((path) => n.add(path)); return n; });
   };
   const changeLayoutMode = (mode) => { const n = mode === 'masonry' ? 'masonry' : 'grid'; setLayoutMode(n); localStorage.setItem('layoutMode', n); };
-  const selectAll = () => setSelected(new Set(items.map((i) => i.path)));
+  const selectAll = () => setSelected(new Set(operationItems.map((i) => i.path)));
   const deselectAll = () => setSelected(new Set());
   const selectAllByKey = () => { if (isSelectedAll) { deselectAll(); setIsSelectedAll(false); } else { selectAll(); setIsSelectedAll(true); } };
-  const selectedItemsForOps = () => items.filter((i) => selected.has(i.path));
+  const selectedItemsForOps = () => operationItems.filter((i) => selected.has(i.path));
   const normalizeOpItems = (ti) => ti.map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' }));
 
   const runSearch = () => {
@@ -182,10 +213,11 @@ export default function App() {
   };
   const clearFilters = () => { setFilters(defaultFilters); setPage(1); };
 
-  const assignPaths = async (paths, tagIds) => { await api.assignTags({ paths, tagIds }); await loadTags(); await load().catch(() => {}); setToast('Tag added'); };
-  const assignSelected = async (tagIds) => { const si = items.filter((i) => selected.has(i.path)).map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); await assignPaths(si, tagIds); setApplyModalOpen(false); };
-  const removePaths = async (paths, tagIds) => { await api.removeTags({ paths, tagIds }); await loadTags(); await load().catch(() => {}); setToast('Tag removed'); };
-  const removeSelected = async (tagIds) => { const si = items.filter((i) => selected.has(i.path)).map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); await removePaths(si, tagIds); setApplyModalOpen(false); };
+  const refreshContent = async () => { await load().catch(() => { }); setRefreshNonce((n) => n + 1); };
+  const assignPaths = async (paths, tagIds) => { await api.assignTags({ paths, tagIds }); await loadTags(); await refreshContent(); setToast('Tag added'); };
+  const assignSelected = async (tagIds) => { const si = selectedItemsForOps().map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); await assignPaths(si, tagIds); setApplyModalOpen(false); };
+  const removePaths = async (paths, tagIds) => { await api.removeTags({ paths, tagIds }); await loadTags(); await refreshContent(); setToast('Tag removed'); };
+  const removeSelected = async (tagIds) => { const si = selectedItemsForOps().map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' })); await removePaths(si, tagIds); setApplyModalOpen(false); };
   const createTag = async (payload) => { const result = await api.createTag(payload); await loadTags(); setToast('Tag created'); return result.tag; };
   const updateTag = async (id, payload) => { await api.updateTag(id, payload); await loadTags(); setToast('Tag updated'); };
   const deleteTag = async (id) => { await api.deleteTag(id); await loadTags(); setToast('Tag deleted'); };
@@ -197,17 +229,22 @@ export default function App() {
     setItems((c) => c.map((e) => e.path === item.path ? { ...e, favorite: !item.favorite } : e));
   };
 
-  const deleteItems = async (targetItems) => {
+  const requestDeleteItems = (targetItems) => {
     if (!targetItems.length) return;
-    if (!confirm(`Delete ${targetItems.length === 1 ? 'this item' : `${targetItems.length} items`}?`)) return;
+    setDeleteConfirm({ items: targetItems });
+  };
+  const confirmDeleteItems = async () => {
+    const targetItems = deleteConfirm?.items || [];
+    if (!targetItems.length) return;
     const payload = targetItems.map((i) => ({ path: i.path, type: i.type === 'folder' ? 'folder' : 'file' }));
     const result = await api.deleteItems(payload);
     setSelected(new Set());
-    await load().catch(() => {});
+    setDeleteConfirm(null);
+    await refreshContent();
     setToast(result.failed ? `${result.deleted} deleted, ${result.failed} failed` : 'Deleted');
   };
-  const deleteSingleItem = (item) => deleteItems([item]);
-  const deleteSelected = () => deleteItems(items.filter((i) => selected.has(i.path)));
+  const deleteSingleItem = (item) => requestDeleteItems([item]);
+  const deleteSelected = () => requestDeleteItems(selectedItemsForOps());
 
   const [moveOpen, setMoveOpen] = useState(false);
   const [movePending, setMovePending] = useState(null);
@@ -219,7 +256,7 @@ export default function App() {
   const executeMove = async (targetFolder) => {
     if (!movePending?.length) return;
     await api.moveItems({ items: normalizeOpItems(movePending), targetFolder, createFolder: '' });
-    setSelected(new Set()); setToast(`Moved ${movePending.length} items`); await load().catch(() => {});
+    setSelected(new Set()); setToast(`Moved ${movePending.length} items`); await refreshContent();
     setMovePending(null);
   };
   const renameItem = async (item) => {
@@ -227,7 +264,7 @@ export default function App() {
     if (!renameTo || renameTo === item.name) return;
     const parent = item.path.split('/').slice(0, -1).join('/');
     await api.moveItems({ items: normalizeOpItems([item]), targetFolder: parent, renameTo });
-    setToast('Renamed'); await load().catch(() => {});
+    setToast('Renamed'); await refreshContent();
   };
   const copyItemsToClipboard = (ti) => { setClipboard({ mode: 'copy', items: normalizeOpItems(ti), at: Date.now() }); setToast(`Copied ${ti.length} items`); };
   const cutItemsToClipboard = (ti) => { setClipboard({ mode: 'cut', items: normalizeOpItems(ti), at: Date.now() }); setToast(`Cut ${ti.length} items`); };
@@ -238,7 +275,7 @@ export default function App() {
     else await api.moveItems({ items: clipboard.items, targetFolder });
     setToast(`${clipboard.mode === 'copy' ? 'Copied' : 'Moved'} ${clipboard.items.length} items`);
     if (clipboard.mode === 'cut') setClipboard(null);
-    setSelected(new Set()); await load().catch(() => {});
+    setSelected(new Set()); await refreshContent();
   };
   const tagItems = (ti) => { setSelected(new Set(ti.map((i) => i.path))); setApplyModalOpen(true); };
   const [saveSearchOpen, setSaveSearchOpen] = useState(false);
@@ -252,7 +289,7 @@ export default function App() {
   const closeMissingDialog = () => { if (!missingDialogBusy) setMissingDialogOpen(false); };
   const deleteAllMissingItems = async () => {
     setMissingDialogBusy(true);
-    try { const r = await api.cleanupOrphans(); setToast(`Removed ${r.removed} records`); setMissingDialogOpen(false); setMissingItems([]); setMissingItemsTotal(0); await load().catch(() => {}); }
+    try { const r = await api.cleanupOrphans(); setToast(`Removed ${r.removed} records`); setMissingDialogOpen(false); setMissingItems([]); setMissingItemsTotal(0); await load().catch(() => { }); }
     catch (e) { setError(e.message); } finally { setMissingDialogBusy(false); }
   };
   const deleteSelectedMissingItems = async (ti) => {
@@ -293,106 +330,107 @@ export default function App() {
         <Navbar />
         <Toast message={toast} />
 
-      {/* search bar */}
-      <div className="pt-6 pb-2">
-        <SearchBar tagsTree={tagsTree} filters={filters} setFilters={setFilters} onSearch={runSearch} onClear={clearFilters}
-          history={history} saved={saved} onSave={saveCurrent} />
-      </div>
+        {/* search bar */}
+        <div className="pt-6 pb-2">
+          <SearchBar tagsTree={tagsTree} filters={filters} setFilters={setFilters} onSearch={runSearch} onClear={clearFilters}
+            history={history} saved={saved} onSave={saveCurrent} />
+        </div>
 
-      {/* quick filters + breadcrumbs */}
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6">
-        {isSearchPage ? (
-          <div className="flex items-center gap-2 py-2 text-xs text-text-muted flex-wrap">
-            <span className="font-medium text-text-secondary">Search results</span>
-            <span>{total} result(s)</span>
-            {(url.get('q') || url.get('name')) && (
-              <button className="px-2 py-0.5 rounded-full bg-surface-3 border border-border text-xs hover:text-text-primary"
-                onClick={() => { const n = new URLSearchParams(window.location.search); n.delete('q'); n.delete('name'); window.location.href = `/search?${n}`; }}>
-                Query: {url.get('q') || url.get('name')} ×
+        {/* quick filters + breadcrumbs */}
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6">
+          {isSearchPage ? (
+            <div className="flex items-center gap-2 py-2 text-xs text-text-muted flex-wrap">
+              <span className="font-medium text-text-secondary">Search results</span>
+              <span>{total} result(s)</span>
+              {(url.get('q') || url.get('name')) && (
+                <button className="px-2 py-0.5 rounded-full bg-surface-3 border border-border text-xs hover:text-text-primary"
+                  onClick={() => { const n = new URLSearchParams(window.location.search); n.delete('q'); n.delete('name'); window.location.href = `/search?${n}`; }}>
+                  Query: {url.get('q') || url.get('name')} ×
+                </button>
+              )}
+              <span>Mode: {(url.get('tagMode') || 'and').toUpperCase()}</span>
+              <button className="ml-auto btn-base btn-ghost text-xs" onClick={saveCurrent}>Save search</button>
+              <button className="btn-base btn-ghost text-xs" onClick={clearFilters}>Clear</button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3 py-2">
+              <BreadcrumbsWrap path={currentPath} onNavigate={navigate} pageSize={pageSize} />
+              <QuickFilters
+                sortBy={sortBy} setSortBy={setSortBy} sortDir={sortDir} setSortDir={setSortDir}
+                groupByTag={groupByTag} onGroupToggle={() => { setGroupByTag((v) => !v); if (groupByTag) setGroupCategory(null); }}
+                groupCategory={groupCategory} onGroupCategoryChange={(id) => { setGroupCategory(id); setPage(1); }}
+                tagsTree={tagsTree} />
+            </div>
+          )}
+
+          {/* floating selection bar (does not push content) */}
+          {(selected.size > 0 || clipboard?.items?.length > 0) && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-4 py-2 rounded-xl glass-strong shadow-2xl border border-brand/20">
+              {!!selected.size && (
+                <>
+                  <span className="text-xs text-text-secondary mr-1">{selected.size} selected</span>
+                  <button className="btn-base btn-ghost text-xs py-1.5 px-2.5" onClick={() => moveItems(selectedItemsForOps())}>Move</button>
+                  <button className="btn-base btn-ghost text-xs py-1.5 px-2.5" onClick={() => copyItemsToClipboard(selectedItemsForOps())}>Copy</button>
+                  <button className="btn-base btn-ghost text-xs py-1.5 px-2.5" onClick={() => cutItemsToClipboard(selectedItemsForOps())}>Cut</button>
+                  <button className="btn-base text-xs py-1.5 px-2.5 bg-danger/20 text-danger hover:bg-danger/30 rounded-xl" onClick={deleteSelected}>Delete</button>
+                </>
+              )}
+              {clipboard?.items?.length > 0 && (
+                <button className="btn-base btn-primary text-xs py-1.5 px-2.5" onClick={() => pasteItems()}>Paste ({clipboard.mode})</button>
+              )}
+              <button className="btn-base btn-primary text-xs py-1.5 px-2.5" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>
+                Tag ({selected.size})
               </button>
-            )}
-            <span>Mode: {(url.get('tagMode') || 'and').toUpperCase()}</span>
-            <button className="ml-auto btn-base btn-ghost text-xs" onClick={saveCurrent}>Save search</button>
-            <button className="btn-base btn-ghost text-xs" onClick={clearFilters}>Clear</button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between gap-3 py-2">
-            <BreadcrumbsWrap path={currentPath} onNavigate={navigate} pageSize={pageSize} />
-            <QuickFilters
-              sortBy={sortBy} setSortBy={setSortBy} sortDir={sortDir} setSortDir={setSortDir}
-              groupByTag={groupByTag} onGroupToggle={() => { setGroupByTag((v) => !v); if (groupByTag) setGroupCategory(null); }}
-              groupCategory={groupCategory} onGroupCategoryChange={(id) => setGroupCategory(id)}
-              tagsTree={tagsTree} />
-          </div>
-        )}
+            </div>
+          )}
 
-        {/* floating selection bar (does not push content) */}
-        {(selected.size > 0 || clipboard?.items?.length > 0) && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-4 py-2 rounded-xl glass-strong shadow-2xl border border-brand/20">
-            {!!selected.size && (
-              <>
-                <span className="text-xs text-text-secondary mr-1">{selected.size} selected</span>
-                <button className="btn-base btn-ghost text-xs py-1.5 px-2.5" onClick={() => moveItems(selectedItemsForOps())}>Move</button>
-                <button className="btn-base btn-ghost text-xs py-1.5 px-2.5" onClick={() => copyItemsToClipboard(selectedItemsForOps())}>Copy</button>
-                <button className="btn-base btn-ghost text-xs py-1.5 px-2.5" onClick={() => cutItemsToClipboard(selectedItemsForOps())}>Cut</button>
-                <button className="btn-base text-xs py-1.5 px-2.5 bg-danger/20 text-danger hover:bg-danger/30 rounded-xl" onClick={deleteSelected}>Delete</button>
-              </>
-            )}
-            {clipboard?.items?.length > 0 && (
-              <button className="btn-base btn-primary text-xs py-1.5 px-2.5" onClick={() => pasteItems()}>Paste ({clipboard.mode})</button>
-            )}
-            <button className="btn-base btn-primary text-xs py-1.5 px-2.5" disabled={!selected.size} onClick={() => setApplyModalOpen(true)}>
-              Tag ({selected.size})
-            </button>
+          {error && <div className="px-3 py-2 mb-3 text-sm rounded-xl bg-danger/10 border border-danger/20 text-danger">{error}</div>}
+
+          {/* content grid */}
+          <div className="py-4">
+            <ContentGrid items={groupByTag ? (allItems || []) : items} selectedPaths={selectedPaths} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode}
+              onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect}
+              onOpenFile={(file) => { setViewerPath(file.path); const u = new URL(window.location.href); u.searchParams.set('view', file.path); window.history.pushState({ viewing: true, filePath: file.path }, '', u.toString()); }}
+              onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem}
+              onMoveItems={moveItems} onCopyItems={copyItemsToClipboard} onCutItems={cutItemsToClipboard} onTagItems={tagItems}
+              onShiftRangeSelect={shiftRangeSelect} groupByTag={groupByTag} groupCategory={groupCategory} tagsTree={tagsTree} pageSize={pageSize} groupLoading={groupByTag && !allItems}
+              groupPage={page} onGroupPageChange={setPage} />
           </div>
-        )}
 
-        {error && <div className="px-3 py-2 mb-3 text-sm rounded-xl bg-danger/10 border border-danger/20 text-danger">{error}</div>}
-
-        {/* content grid */}
-        <div className="py-4">
-          <ContentGrid items={groupByTag && allItems ? allItems : items} selectedPaths={selectedPaths} layoutMode={layoutMode} onLayoutModeChange={changeLayoutMode}
-            onToggleSelect={toggleSelect} onOpenFolder={navigate} onLongPressSelect={toggleSelect}
-            onOpenFile={(file) => { setViewerPath(file.path); const u = new URL(window.location.href); u.searchParams.set('view', file.path); window.history.pushState({ viewing: true, filePath: file.path }, '', u.toString()); }}
-            onToggleFavorite={toggleFavorite} onDeleteItem={deleteSingleItem}
-            onMoveItems={moveItems} onCopyItems={copyItemsToClipboard} onCutItems={cutItemsToClipboard} onTagItems={tagItems}
-            onShiftRangeSelect={shiftRangeSelect} groupByTag={groupByTag} groupCategory={groupCategory} tagsTree={tagsTree} pageSize={pageSize} />
+          {/* pagination — hidden when grouping (ContentGrid has its own) */}
+          {!groupByTag && <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />}
         </div>
 
-        {/* pagination — hidden when grouping (ContentGrid has its own) */}
-        {!groupByTag && <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />}
-      </div>
+        {/* modals */}
+        <ApplyTagsModal open={applyModalOpen} selectedCount={selected.size} tagsTree={tagsTree} tagSettings={tagSettings}
+          onClose={() => setApplyModalOpen(false)} onApply={assignSelected} onRemove={removeSelected} onCreateTag={createTag} onDeleteTag={deleteTag} analysis={tagAnalysis} />
+        <CreateTagModal open={createModalOpen} tagsTree={tagsTree} onClose={() => setCreateModalOpen(false)} onCreateTag={createTag} />
 
-      {/* modals */}
-      <ApplyTagsModal open={applyModalOpen} selectedCount={selected.size} tagsTree={tagsTree} tagSettings={tagSettings}
-        onClose={() => setApplyModalOpen(false)} onApply={assignSelected} onRemove={removeSelected} onCreateTag={createTag} onDeleteTag={deleteTag} analysis={tagAnalysis} />
-      <CreateTagModal open={createModalOpen} tagsTree={tagsTree} onClose={() => setCreateModalOpen(false)} onCreateTag={createTag} />
-
-      {/* missing items modal */}
-      <Modal open={missingDialogOpen} onClose={closeMissingDialog} title="Missing Items" maxWidth="max-w-2xl">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-sm text-text-muted">
-            <strong>{missingItemsTotal} missing items</strong>
-            <span>{missingItems.length} shown</span>
+        {/* missing items modal */}
+        <Modal open={missingDialogOpen} onClose={closeMissingDialog} title="Missing Items" maxWidth="max-w-2xl">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm text-text-muted">
+              <strong>{missingItemsTotal} missing items</strong>
+              <span>{missingItems.length} shown</span>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button className="btn-base btn-ghost text-xs" onClick={copyMissingPaths} disabled={!missingItems.length}>Copy paths</button>
+              <button className="btn-base btn-ghost text-xs" onClick={exportMissingPaths} disabled={!missingItems.length}>Export</button>
+            </div>
+            <div className="max-h-[40vh] overflow-y-auto space-y-1">
+              {missingItems.slice(0, MISSING_ITEMS_PREVIEW_LIMIT).map((item) => (
+                <div key={item.path} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-surface-3 text-xs text-text-secondary">
+                  <span>{(item.itemType || item.type) === 'folder' ? '📁' : '📄'}</span>
+                  <code className="text-text-primary flex-1 truncate">{item.path}</code>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button className="btn-base bg-danger/20 text-danger hover:bg-danger/30 rounded-xl text-xs" onClick={deleteAllMissingItems} disabled={missingDialogBusy}>Delete All</button>
+              <button className="btn-base btn-ghost text-xs" onClick={closeMissingDialog}>Close</button>
+            </div>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <button className="btn-base btn-ghost text-xs" onClick={copyMissingPaths} disabled={!missingItems.length}>Copy paths</button>
-            <button className="btn-base btn-ghost text-xs" onClick={exportMissingPaths} disabled={!missingItems.length}>Export</button>
-          </div>
-          <div className="max-h-[40vh] overflow-y-auto space-y-1">
-            {missingItems.slice(0, MISSING_ITEMS_PREVIEW_LIMIT).map((item) => (
-              <div key={item.path} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-surface-3 text-xs text-text-secondary">
-                <span>{(item.itemType || item.type) === 'folder' ? '📁' : '📄'}</span>
-                <code className="text-text-primary flex-1 truncate">{item.path}</code>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <button className="btn-base bg-danger/20 text-danger hover:bg-danger/30 rounded-xl text-xs" onClick={deleteAllMissingItems} disabled={missingDialogBusy}>Delete All</button>
-            <button className="btn-base btn-ghost text-xs" onClick={closeMissingDialog}>Close</button>
-          </div>
-        </div>
-      </Modal>
+        </Modal>
       </div>{/* end visibility-hidden wrapper */}
 
       {/* save search modal */}
@@ -433,6 +471,27 @@ export default function App() {
         items={movePending}
         onMove={(target) => { setMoveOpen(false); executeMove(target); }}
       />
+
+      <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Confirm delete" maxWidth="max-w-md">
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Delete <strong className="text-text-primary">{deleteConfirm?.items?.length || 0}</strong> item{(deleteConfirm?.items?.length || 0) === 1 ? '' : 's'}? This cannot be undone.
+          </p>
+          <div className="max-h-48 overflow-y-auto rounded-xl border border-border bg-surface-2/60 p-2 space-y-1">
+            {(deleteConfirm?.items || []).slice(0, 20).map((item) => (
+              <div key={item.path} className="flex items-center gap-2 text-xs text-text-secondary px-2 py-1 rounded-lg">
+                <span>{item.type === 'folder' ? '📁' : '📄'}</span>
+                <span className="truncate" title={item.path}>{item.path}</span>
+              </div>
+            ))}
+            {(deleteConfirm?.items?.length || 0) > 20 && <p className="px-2 py-1 text-xs text-text-muted">+{deleteConfirm.items.length - 20} more…</p>}
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setDeleteConfirm(null)} className="btn-base btn-ghost text-sm px-4">Cancel</button>
+            <button onClick={confirmDeleteItems} className="btn-base text-sm px-4 bg-danger text-white hover:bg-red-600 rounded-xl">Delete</button>
+          </div>
+        </div>
+      </Modal>
 
       {/* fullscreen viewer over everything */}
       {viewerPath && (

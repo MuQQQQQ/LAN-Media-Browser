@@ -39,7 +39,7 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
   // ── video sync ──
   useEffect(() => {
     const v = videoRef.current; if (!v) return;
-    playing ? v.play().catch(() => {}) : v.pause();
+    playing ? v.play().catch(() => { }) : v.pause();
   }, [playing]);
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = playbackRate || 1;
@@ -53,7 +53,7 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
     const u = `/api/thumbnail/video-sprite?path=${encodeURIComponent(decodeURIComponent(rawPath || ''))}`;
     fetch(u).then(r => r.json()).then(d => {
       if (d.spriteUrl) setSpriteData(d);
-    }).catch(() => {});
+    }).catch(() => { });
   }, [src]);
 
   // reset on src change
@@ -89,10 +89,12 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
     const d = () => { setDuration(v.duration); onLoadedMetadata?.({ currentTarget: v }); };
     const e = () => onError?.();
     // oncanplay
-    const c = () => { { // HAVE_METADATA
-      setDuration(v.duration);
-      onLoadedMetadata?.({ currentTarget: v });
-    } };
+    const c = () => {
+      { // HAVE_METADATA
+        setDuration(v.duration);
+        onLoadedMetadata?.({ currentTarget: v });
+      }
+    };
     v.addEventListener('canplay', c);
     v.addEventListener('timeupdate', t);
     v.addEventListener('loadedmetadata', d);
@@ -102,22 +104,40 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
 
   const flashIcon = useCallback((icon) => { setCenterIcon(icon); setTimeout(() => setCenterIcon(null), 600); }, []);
   const flashSeek = useCallback((dir, s) => { setSeekHint({ dir, s }); setTimeout(() => setSeekHint(null), 800); }, []);
+  const togglePlayback = useCallback(() => {
+    setPlaying((wasPlaying) => {
+      const next = !wasPlaying;
+      flashIcon(next ? 'pause' : 'play');
+      return next;
+    });
+  }, [flashIcon]);
+
+  useEffect(() => {
+    const v = videoRef.current; if (!v) return;
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    v.addEventListener('play', onPlay);
+    v.addEventListener('pause', onPause);
+    v.addEventListener('ended', onPause);
+    return () => {
+      v.removeEventListener('play', onPlay);
+      v.removeEventListener('pause', onPause);
+      v.removeEventListener('ended', onPause);
+    };
+  }, [src]);
 
   // keyboard: space = play/pause
   useEffect(() => {
     const handler = (e) => {
       if (e.key === ' ' || e.code === 'Space') {
-        const v = videoRef.current; if (!v) return;
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
         e.preventDefault();
-        const wantPlay = v.paused || v.ended;
-        setPlaying(wantPlay);
-        flashIcon(wantPlay ? 'play' : 'pause');
+        togglePlayback();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [flashIcon]);
+  }, [togglePlayback]);
 
   // ── zone helper ──
   const getZone = useCallback((clientX) => {
@@ -167,13 +187,11 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
     // single-tap timer — any zone
     g.tapTimer = setTimeout(() => {
       if (g.mode === 'tapping') {
-        const wantPlay = v.paused || v.ended;
-        setPlaying(wantPlay);
-        flashIcon(wantPlay ? 'pause' : 'play');
+        togglePlayback();
         g.mode = 'idle';
       }
     }, 250);
-  }, [duration, flashIcon, flashSeek, getZone, g]);
+  }, [duration, flashSeek, getZone, g, togglePlayback]);
 
   // ── POINTER MOVE ──
   const onMove = useCallback((e) => {
@@ -214,7 +232,7 @@ export default function VideoPlayer({ src, autoPlay, playbackRate, onLoadedMetad
     if (g.mode !== 'tapping') { g.mode = 'idle'; }
     g.locked = false; g.axis = null;
     if (g.ptrId != null) {
-      try { e.currentTarget.releasePointerCapture(g.ptrId); } catch (_) {}
+      try { e.currentTarget.releasePointerCapture(g.ptrId); } catch (_) { }
       g.ptrId = null;
     }
   }, [g]);
